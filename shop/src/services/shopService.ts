@@ -93,6 +93,11 @@ export const shopService = {
     return res.data;
   },
 
+  getLoyaltyHistory: async () => {
+    const res = await api.get('/auth/loyalty-history');
+    return res.data;
+  },
+
   // Customer shipping addresses
   getAddresses: async () => {
     const res = await api.get('/auth/addresses');

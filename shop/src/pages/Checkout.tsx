@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useCartStore, CouponSlot } from '../store/cartStore';
+import { useCartStore } from '../store/cartStore';
+import type { CouponSlot } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
 import { shopService } from '../services/shopService';
 import { 
@@ -20,7 +21,8 @@ import {
   Gift,
   Truck,
   Crown,
-  Star
+  Star,
+  Sparkles
 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000';
@@ -34,9 +36,14 @@ const VOUCHER_TYPES: { type: CouponSlot; label: string; icon: any; color: string
 ];
 
 export const Checkout = () => {
-  const navigate = useNavigate();
   const location = useLocation();
   const { customer } = useAuthStore();
+  const { data: profileRes } = useQuery({ 
+    queryKey: ['shop-profile'], 
+    queryFn: shopService.getProfile, 
+    enabled: !!customer 
+  });
+  const freshCustomer = profileRes?.data || customer;
   const { items: cartItems, coupons, applyCoupon, removeCoupon, getAppliedCoupons, getCartSubtotal, clearCart } = useCartStore();
 
   const buyNowItem = location.state?.buyNowItem;
@@ -156,15 +163,17 @@ export const Checkout = () => {
   const { data: loyaltyRes } = useQuery({ queryKey: ['loyalty-config'], queryFn: () => shopService.getLoyaltyConfig() });
   const loyaltyConfig = loyaltyRes?.data;
 
-  // Find customer's current tier discount
-  const customerTierDiscount = (() => {
-    if (!customer || !loyaltyConfig?.tiers) return 0;
-    const sorted = [...loyaltyConfig.tiers].filter((t: any) => t.isActive).sort((a: any, b: any) => b.minPoints - a.minPoints);
-    const tier = sorted.find((t: any) => (customer.loyaltyPoints || 0) >= t.minPoints);
-    return tier?.discountPercent || 0;
+  // Find customer's current tier config (by name first, fallback to points)
+  const customerTierConfig = (() => {
+    if (!freshCustomer || !loyaltyConfig?.tiers) return null;
+    const byName = loyaltyConfig.tiers.find((t: any) => t.name.toLowerCase() === freshCustomer.tier.toLowerCase());
+    if (byName) return byName;
+    const sorted = [...loyaltyConfig.tiers].sort((a: any, b: any) => b.minPoints - a.minPoints);
+    return sorted.find((t: any) => (freshCustomer.loyaltyPoints || 0) >= t.minPoints) || null;
   })();
 
-  const shippingFeeEstimate = 30000;
+  const customerTierDiscount = customerTierConfig?.discountPercent || 0;
+
   const orderDiscount    = calcCouponDiscount(coupons.order, subtotal);
   const productDiscount  = calcCouponDiscount(coupons.product, subtotal);
   const buyXYDiscount    = calcCouponDiscount(coupons.buy_x_get_y, subtotal);
@@ -327,6 +336,14 @@ export const Checkout = () => {
 
   const shippingFee = getShippingFee();
   const total = Math.max(0, subtotal - discount) + shippingFee;
+
+  // Expected loyalty points to earn
+  const expectedPoints = (() => {
+    if (!freshCustomer || !loyaltyConfig || !loyaltyConfig.isActive) return 0;
+    const vndPerPoint = loyaltyConfig.vndToEarnOnePoint || 100000;
+    const multiplier = customerTierConfig?.pointMultiplier || 1;
+    return Math.floor((total / vndPerPoint) * multiplier);
+  })();
 
   // Fetch provinces on mount
   useEffect(() => {
@@ -943,9 +960,9 @@ export const Checkout = () => {
                   <span className="font-bold">-{buyXYDiscount.toLocaleString()}đ</span>
                 </div>
               )}
-              {tierDiscountAmt > 0 && (
+              {freshCustomer && (
                 <div className="flex justify-between text-amber-600 dark:text-amber-400">
-                  <span className="flex items-center gap-1"><Star size={10}/> Hạng {customer?.tier} ({customerTierDiscount}%)</span>
+                  <span className="flex items-center gap-1"><Star size={10}/> Hạng {freshCustomer.tier} ({customerTierDiscount}%)</span>
                   <span className="font-bold">-{tierDiscountAmt.toLocaleString()}đ</span>
                 </div>
               )}
@@ -957,6 +974,12 @@ export const Checkout = () => {
                 <span className="font-black text-sm text-gray-800 dark:text-white">Tổng cộng</span>
                 <span className="font-black text-base text-primary dark:text-indigo-400">{total.toLocaleString()}đ</span>
               </div>
+              {expectedPoints > 0 && (
+                <div className="flex justify-between text-indigo-600 dark:text-indigo-400 pt-1.5 border-t border-dashed dark:border-gray-750">
+                  <span className="flex items-center gap-1"><Sparkles size={10}/> Điểm tích luỹ dự kiến</span>
+                  <span className="font-extrabold text-xs">+{expectedPoints.toLocaleString()} điểm</span>
+                </div>
+              )}
             </div>
 
             <button

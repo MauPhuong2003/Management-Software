@@ -21,7 +21,7 @@ export const Login = () => {
   // Redirect back to original page after login (e.g. /cart or /checkout)
   const redirectTo = (location.state as any)?.from || '/';
 
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot_password'>('login');
   const [showPwd, setShowPwd] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');

@@ -512,7 +512,7 @@ const FlashSales = () => {
                               <tr key={prodId} className="hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
                                 <td className="p-3">
                                   {prodDetail.images && prodDetail.images.length > 0 ? (
-                                    <img src={`${API_BASE}${prodDetail.images[0]}`} alt="Product" className="w-8 h-8 object-cover rounded" />
+                                    <img src={prodDetail.images[0]?.startsWith('http') ? prodDetail.images[0] : `${API_BASE}${prodDetail.images[0]}`} alt="Product" className="w-8 h-8 object-cover rounded" />
                                   ) : (
                                     <div className="w-8 h-8 bg-gray-150 dark:bg-gray-650 rounded flex items-center justify-center text-gray-400 text-[10px]"><Package size={12}/></div>
                                   )}
@@ -613,7 +613,7 @@ const FlashSales = () => {
                   <div key={p._id} className="flex justify-between items-center p-2.5 rounded-lg border dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
                     <div className="flex gap-2.5 items-center">
                       {p.images && p.images.length > 0 ? (
-                        <img src={`${API_BASE}${p.images[0]}`} alt="Product" className="w-10 h-10 object-cover rounded" />
+                        <img src={p.images[0]?.startsWith('http') ? p.images[0] : `${API_BASE}${p.images[0]}`} alt="Product" className="w-10 h-10 object-cover rounded" />
                       ) : (
                         <div className="w-10 h-10 bg-gray-150 dark:bg-gray-650 rounded flex items-center justify-center text-gray-400 text-xs"><Package size={14}/></div>
                       )}

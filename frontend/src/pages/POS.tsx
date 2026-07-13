@@ -313,7 +313,7 @@ const POS = () => {
             <div 
               key={p._id} 
               onClick={() => {
-                if (p.variants && p.variants.length > 0) {
+                if (p.variants && p.variants.length > 1) {
                   setActiveVariantProduct(p);
                   setSelectedVariant(p.variants[0]);
                 } else {
@@ -322,14 +322,14 @@ const POS = () => {
               }}
               className="bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 rounded-xl p-3.5 cursor-pointer hover:shadow-md hover:border-primary transition-all flex flex-col group relative overflow-hidden"
             >
-              {p.variants && p.variants.length > 0 && (
+              {p.variants && p.variants.length > 1 && (
                 <span className="absolute top-2 right-2 bg-indigo-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm z-10">
                   {p.variants.length} mẫu
                 </span>
               )}
               <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg mb-3 flex items-center justify-center text-gray-400 group-hover:scale-105 transition-transform overflow-hidden border dark:border-gray-650">
                 {p.images && p.images.length > 0 ? (
-                  <img src={`${API_BASE}${p.images[0]}`} alt={p.name} className="w-full h-full object-cover" />
+                  <img src={p.images[0]?.startsWith('http') ? p.images[0] : `${API_BASE}${p.images[0]}`} alt={p.name} className="w-full h-full object-cover" />
                 ) : (
                   <ShoppingCart size={32} className="opacity-20"/>
                 )}
@@ -822,7 +822,7 @@ const POS = () => {
             <div className="flex gap-4 mb-4">
               <div className="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shrink-0 border dark:border-gray-600">
                 {activeVariantProduct.images && activeVariantProduct.images.length > 0 ? (
-                  <img src={`${API_BASE}${activeVariantProduct.images[0]}`} alt={activeVariantProduct.name} className="w-full h-full object-cover" />
+                  <img src={activeVariantProduct.images[0]?.startsWith('http') ? activeVariantProduct.images[0] : `${API_BASE}${activeVariantProduct.images[0]}`} alt={activeVariantProduct.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400"><ShoppingCart size={24} /></div>
                 )}

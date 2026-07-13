@@ -5,6 +5,7 @@ import Product from '../models/Product';
 import Promotion from '../models/Promotion';
 import Customer from '../models/Customer';
 import LoyaltyConfig from '../models/LoyaltyConfig';
+import PointHistory from '../models/PointHistory';
 import { awardLoyaltyPoints, getTierForPoints } from './loyaltyController';
 
 export const getOrders = async (req: Request, res: Response): Promise<void> => {
@@ -13,8 +14,13 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
         const limit = parseInt(req.query.limit as string) || 20;
         const skip = (page - 1) * limit;
 
-        const orders = await Order.find().populate('customer').populate('items.product').skip(skip).limit(limit).sort({ createdAt: -1 });
-        const total = await Order.countDocuments();
+        const filter: any = {};
+        if (req.query.customer) {
+            filter.customer = req.query.customer;
+        }
+
+        const orders = await Order.find(filter).populate('customer').populate('items.product').skip(skip).limit(limit).sort({ createdAt: -1 });
+        const total = await Order.countDocuments(filter);
 
         res.json({ success: true, data: orders, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
     } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
@@ -127,6 +133,15 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
                 customerDoc.tier = getTierForPoints(customerDoc.loyaltyPoints, loyaltyConfig.tiers as any[], customerDoc.tier);
             }
             await customerDoc.save();
+
+            // Create log entry for point usage
+            await PointHistory.create({
+                customer: customerDoc._id,
+                order: order._id,
+                points: -loyaltyPointsUsed,
+                type: 'spend',
+                reason: `Sử dụng điểm thanh toán đơn hàng ${order.orderCode}`
+            });
         }
 
         // Award loyalty points to customer if paid
@@ -134,7 +149,8 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
             await awardLoyaltyPoints(
                 order.customer.toString(),
                 order.totalAmount,
-                order.orderSource
+                order.orderSource,
+                order._id.toString()
             );
             // Mark so backfill won't double-award
             await Order.findByIdAndUpdate(order._id, { loyaltyAwarded: true });
@@ -146,7 +162,34 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
 export const updateOrderStatus = async (req: Request, res: Response): Promise<void> => {
     try {
-        const order = await Order.findByIdAndUpdate(req.params.id, { orderStatus: req.body.status }, { new: true });
+        const { status } = req.body;
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            res.status(404).json({ success: false, message: 'Đơn hàng không tồn tại' });
+            return;
+        }
+
+        order.orderStatus = status;
+
+        // Auto-mark payment as paid when delivered
+        if (status === 'delivered' && order.paymentStatus !== 'paid') {
+            order.paymentStatus = 'paid';
+        }
+
+        // Award loyalty points if paymentStatus is paid and not yet awarded
+        if (order.customer && order.paymentStatus === 'paid' && !order.loyaltyAwarded) {
+            await awardLoyaltyPoints(
+                order.customer.toString(),
+                order.totalAmount,
+                order.orderSource || 'website',
+                order._id.toString()
+            );
+            order.loyaltyAwarded = true;
+        }
+
+        await order.save();
         res.json({ success: true, data: order });
-    } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
+    } catch (e: any) { 
+        res.status(500).json({ success: false, message: e.message }); 
+    }
 };

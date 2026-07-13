@@ -11,6 +11,7 @@ import Setting from '../models/Setting';
 import ShippingConfig from '../models/ShippingConfig';
 import Warehouse from '../models/Warehouse';
 import LoyaltyConfig from '../models/LoyaltyConfig';
+import PointHistory from '../models/PointHistory';
 import { CustomerAuthRequest } from '../middlewares/authMiddleware';
 
 // Generates JWT token for customers
@@ -124,6 +125,17 @@ export const getShopProfile = async (req: CustomerAuthRequest, res: Response): P
     try {
         const customer = await Customer.findById(req.customer?._id).select('-password');
         res.json({ success: true, data: customer });
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+};
+
+export const getShopLoyaltyHistory = async (req: CustomerAuthRequest, res: Response): Promise<void> => {
+    try {
+        const history = await PointHistory.find({ customer: req.customer?._id })
+            .populate('order', 'orderCode totalAmount')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: history });
     } catch (e: any) {
         res.status(500).json({ success: false, message: e.message });
     }
@@ -638,9 +650,12 @@ export const placeShopOrder = async (req: Request, res: Response): Promise<void>
                     const shouldEarn = loyaltyConf.applyToOrders === 'all' || loyaltyConf.applyToOrders === 'website';
                     if (shouldEarn) {
                         const vndPerPoint = loyaltyConf.vndToEarnOnePoint || 100000;
-                        // Find customer tier multiplier
-                        const activeTiers = loyaltyConf.tiers.filter(t => t.isActive).sort((a, b) => b.minPoints - a.minPoints);
-                        const currentTier = activeTiers.find(t => (customerDoc.loyaltyPoints || 0) >= t.minPoints);
+                        const activeTiers = loyaltyConf.tiers.filter(t => t.isActive !== false).sort((a, b) => b.minPoints - a.minPoints);
+                        // Find customer tier multiplier by name first, fallback to points
+                        let currentTier = loyaltyConf.tiers.find(t => t.name.toLowerCase() === customerDoc.tier.toLowerCase() && t.isActive !== false);
+                        if (!currentTier) {
+                            currentTier = activeTiers.find(t => (customerDoc.loyaltyPoints || 0) >= t.minPoints);
+                        }
                         const multiplier = currentTier?.pointMultiplier || 1;
 
                         const earnedPoints = Math.floor((totalAmount / vndPerPoint) * multiplier);

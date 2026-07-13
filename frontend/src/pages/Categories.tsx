@@ -230,7 +230,7 @@ const Categories = () => {
                 <tr key={node._id} className="border-b dark:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
                   <td className="p-4">
                     {node.image ? (
-                      <img src={`${API_BASE}${node.image}`} alt={node.name} className="w-10 h-10 object-cover rounded-lg border dark:border-gray-700" />
+                       <img src={node.image?.startsWith('http') ? node.image : `${API_BASE}${node.image}`} alt={node.name} className="w-10 h-10 object-cover rounded-lg border dark:border-gray-700" />
                     ) : (
                       <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-400"><Folder size={18}/></div>
                     )}
@@ -314,7 +314,7 @@ const Categories = () => {
                 <div className="flex items-center gap-4">
                   {image ? (
                     <div className="relative w-20 h-20 border rounded-xl overflow-hidden dark:border-gray-700 bg-gray-50 flex items-center justify-center">
-                      <img src={`${API_BASE}${image}`} alt="Category" className="w-full h-full object-cover" />
+                       <img src={image?.startsWith('http') ? image : `${API_BASE}${image}`} alt="Category" className="w-full h-full object-cover" />
                       <button type="button" onClick={removeImage} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600">
                         <X size={10} />
                       </button>
@@ -355,7 +355,7 @@ const Categories = () => {
                               className="rounded text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-600"
                             />
                             {prod.images && prod.images.length > 0 ? (
-                              <img src={`${API_BASE}${prod.images[0]}`} alt={prod.name} className="w-8 h-8 object-cover rounded border dark:border-gray-600" />
+                              <img src={prod.images[0]?.startsWith('http') ? prod.images[0] : `${API_BASE}${prod.images[0]}`} alt={prod.name} className="w-8 h-8 object-cover rounded border dark:border-gray-600" />
                             ) : (
                               <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded border dark:border-gray-600 flex items-center justify-center text-gray-400"><Folder size={12}/></div>
                             )}

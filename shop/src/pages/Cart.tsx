@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useCartStore, CouponSlot } from '../store/cartStore';
+import { useCartStore } from '../store/cartStore';
+import type { CouponSlot } from '../store/cartStore';
 import { shopService } from '../services/shopService';
 import { 
   Trash2, 
@@ -28,7 +29,7 @@ const VOUCHER_TYPES: { type: CouponSlot; label: string; icon: any; color: string
 
 export const Cart = () => {
   const navigate = useNavigate();
-  const { items, updateQty, removeItem, coupons, applyCoupon, removeCoupon, getAppliedCoupons, getCartSubtotal } = useCartStore();
+  const { items, updateQty, removeItem, coupons, applyCoupon, removeCoupon, getCartSubtotal } = useCartStore();
   
   const [voucherInput, setVoucherInput] = useState('');
   const [voucherError, setVoucherError] = useState('');

@@ -20,5 +20,9 @@ export const loyaltyService = {
   backfillPoints: async () => {
     const res = await api.post('/loyalty/backfill');
     return res.data;
+  },
+  getPointHistory: async (customerId: string) => {
+    const res = await api.get(`/loyalty/history/${customerId}`);
+    return res.data;
   }
 };

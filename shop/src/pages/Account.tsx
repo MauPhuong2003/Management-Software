@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import { shopService } from '../services/shopService';
 import { 
@@ -12,15 +12,13 @@ import {
   Edit2, 
   Trash2, 
   Check, 
-  X, 
-  ChevronRight,
-  Clock,
-  Truck,
-  Star,
-  AlertCircle,
-  XCircle,
-  RefreshCw,
-  Lock
+  Clock, 
+  Truck, 
+  Star, 
+  XCircle, 
+  RefreshCw, 
+  Lock,
+  Copy
 } from 'lucide-react';
 
 const ORDER_STATUSES: Record<string, { label: string; color: string; icon: any }> = {
@@ -118,10 +116,35 @@ export const Account = () => {
   });
   const orders = ordersData?.data || [];
 
+  // Fetch loyalty configurations for calculating customer tier discount percentage
+  const { data: loyaltyConfigRes } = useQuery({
+    queryKey: ['shop-loyalty-config'],
+    queryFn: shopService.getLoyaltyConfig
+  });
+  const loyaltyConfig = loyaltyConfigRes?.data;
+
   // Profile edit state
   const [editProfile, setEditProfile] = useState(false);
   const [profileForm, setProfileForm] = useState<any>({});
   const [saveProfileLoading, setSaveProfileLoading] = useState(false);
+
+  // Loyalty Point History state & query
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const { data: loyaltyHistoryData } = useQuery({
+    queryKey: ['shop-loyalty-history'],
+    queryFn: shopService.getLoyaltyHistory,
+    enabled: !!customer && isHistoryOpen
+  });
+  const loyaltyHistory = loyaltyHistoryData?.data || [];
+  
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<any>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopyOrderCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   const handleSaveProfile = async () => {
     setSaveProfileLoading(true);
@@ -442,13 +465,26 @@ export const Account = () => {
                     { label: 'Email', value: profile?.email || '—' },
                     { label: 'Giới tính', value: profile?.gender || '—' },
                     { label: 'Hạng thành viên', value: profile?.tier },
-                    { label: 'Điểm tích lũy', value: `${profile?.loyaltyPoints || 0} điểm` },
+                    { label: 'Điểm tích lũy', value: `${profile?.loyaltyPoints || 0} điểm`, isLoyalty: true },
                     { label: 'Tổng chi tiêu', value: `${(profile?.totalSpent || 0).toLocaleString()}đ` },
                     { label: 'Địa chỉ', value: profile?.address || '—' },
                   ].map(item => (
-                    <div key={item.label} className="space-y-0.5">
+                    <div key={item.label} className="space-y-0.5 text-left">
                       <p className="text-[10px] font-extrabold text-gray-400 uppercase">{item.label}</p>
-                      <p className="text-xs font-bold text-gray-800 dark:text-white">{item.value}</p>
+                      {item.isLoyalty ? (
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-gray-800 dark:text-white">{item.value}</p>
+                          <button 
+                            type="button"
+                            onClick={() => setIsHistoryOpen(true)}
+                            className="text-[10px] font-extrabold text-primary hover:underline bg-transparent border-0 outline-none cursor-pointer p-0"
+                          >
+                            (Chi tiết)
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs font-bold text-gray-800 dark:text-white">{item.value}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -762,7 +798,6 @@ export const Account = () => {
                         
                         const isCompleted = stepIdx < currentIdx && order.orderStatus !== 'cancelled';
                         const isCurrent = stepIdx === currentIdx && order.orderStatus !== 'cancelled';
-                        const isPending = stepIdx > currentIdx || order.orderStatus === 'cancelled';
 
                         let circleClass = "";
                         let circleContent = null;
@@ -840,15 +875,23 @@ export const Account = () => {
                         <p className="text-[10px] text-gray-400 font-semibold">Tổng thanh toán</p>
                         <p className="text-sm font-extrabold text-primary dark:text-indigo-400">{order.totalAmount?.toLocaleString()}đ</p>
                       </div>
-                      {(order.orderStatus === 'pending' || order.orderStatus === 'confirmed') && (
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleCancelOrder(order._id)}
-                          disabled={cancelingOrderId === order._id}
-                          className="text-xs font-bold text-red-500 border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/30 px-4 py-2 rounded-xl cursor-pointer transition-colors disabled:opacity-60"
+                          onClick={() => setSelectedOrderDetail(order)}
+                          className="text-xs font-bold text-primary border border-primary/20 dark:border-gray-600 hover:bg-primary/5 dark:hover:bg-gray-700 px-4 py-2 rounded-xl cursor-pointer transition-all duration-200 shadow-sm hover:shadow"
                         >
-                          {cancelingOrderId === order._id ? 'Đang hủy...' : 'Hủy đơn'}
+                          Xem chi tiết
                         </button>
-                      )}
+                        {(order.orderStatus === 'pending' || order.orderStatus === 'confirmed') && (
+                          <button
+                            onClick={() => handleCancelOrder(order._id)}
+                            disabled={cancelingOrderId === order._id}
+                            className="text-xs font-bold text-red-500 border border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/30 px-4 py-2 rounded-xl cursor-pointer transition-colors disabled:opacity-60"
+                          >
+                            {cancelingOrderId === order._id ? 'Đang hủy...' : 'Hủy đơn'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -911,6 +954,208 @@ export const Account = () => {
           )}
         </main>
       </div>
+
+      {isHistoryOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 text-left">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md border border-gray-150 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-750">
+              <h4 className="text-xs font-black text-gray-800 dark:text-white uppercase tracking-wider">Lịch sử tích/tiêu điểm của bạn</h4>
+              <button 
+                type="button"
+                onClick={() => setIsHistoryOpen(false)} 
+                className="text-gray-450 hover:text-gray-800 dark:hover:text-white font-extrabold cursor-pointer bg-transparent border-0 outline-none"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-5 max-h-[400px] overflow-y-auto space-y-2.5 custom-scrollbar">
+              {loyaltyHistory.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-10">Bạn chưa có lịch sử điểm nào</p>
+              ) : (
+                loyaltyHistory.map((log: any) => {
+                  const isEarn = log.points >= 0;
+                  return (
+                    <div key={log._id} className="flex justify-between items-start gap-2.5 p-3 bg-gray-50 dark:bg-gray-750/30 rounded-xl border dark:border-gray-750 text-xs">
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="font-semibold text-gray-755 dark:text-gray-200">{log.reason}</p>
+                        <p className="text-[10px] text-gray-400 dark:text-gray-505 mt-0.5">
+                          {new Date(log.createdAt).toLocaleString('vi-VN')}
+                        </p>
+                      </div>
+                      <span className={`font-extrabold shrink-0 ${isEarn ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                        {isEarn ? `+${log.points}` : log.points}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedOrderDetail && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 text-left">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-2xl border border-gray-150 dark:border-gray-700 overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-5 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-750">
+              <div>
+                <h4 className="text-xs font-black text-gray-800 dark:text-white uppercase tracking-wider">Chi tiết đơn hàng</h4>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="font-mono text-xs font-extrabold text-primary">{selectedOrderDetail.orderCode}</span>
+                  <button 
+                    onClick={() => handleCopyOrderCode(selectedOrderDetail.orderCode)}
+                    className="p-1 text-gray-400 hover:text-primary dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-all bg-transparent border-0 outline-none cursor-pointer flex items-center"
+                    title="Sao chép mã đơn hàng"
+                  >
+                    {isCopied ? <span className="text-[10px] text-green-500 font-bold">Đã chép!</span> : <Copy size={12} />}
+                  </button>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setSelectedOrderDetail(null)} 
+                className="text-gray-450 hover:text-gray-850 dark:hover:text-white font-extrabold cursor-pointer bg-transparent border-0 outline-none p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="p-5 overflow-y-auto space-y-5 custom-scrollbar text-xs">
+              
+              {/* Stepper progress */}
+              <div className="grid grid-cols-4 gap-1 py-2 border-b dark:border-gray-700/50 pb-4">
+                {['pending', 'confirmed', 'shipping', 'delivered'].map((step, idx) => {
+                  const stepInfo = ORDER_STATUSES[step];
+                  const currentIdx = Object.keys(ORDER_STATUSES).indexOf(selectedOrderDetail.orderStatus);
+                  const stepIdx = Object.keys(ORDER_STATUSES).indexOf(step);
+                  
+                  const isCompleted = stepIdx < currentIdx && selectedOrderDetail.orderStatus !== 'cancelled';
+                  const isCurrent = stepIdx === currentIdx && selectedOrderDetail.orderStatus !== 'cancelled';
+
+                  let circleClass = "";
+                  let circleContent = null;
+
+                  if (isCompleted) {
+                    circleClass = "bg-green-500 border-green-500 text-white";
+                    circleContent = <Check size={10}/>;
+                  } else if (isCurrent) {
+                    circleClass = "bg-primary border-primary text-white ring-4 ring-primary/20 animate-pulse";
+                    circleContent = idx + 1;
+                  } else {
+                    circleClass = "bg-gray-50 dark:bg-gray-750 border-gray-200 dark:border-gray-600 text-gray-400";
+                    circleContent = idx + 1;
+                  }
+
+                  return (
+                    <div key={step} className="flex flex-col items-center gap-1.5 relative">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-extrabold border-2 z-10 transition-all duration-300 ${circleClass}`}>
+                        {circleContent}
+                      </div>
+                      <p className={`text-[9px] font-bold text-center leading-tight ${isCurrent ? 'text-primary' : 'text-gray-400'}`}>
+                        {stepInfo.label}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Shipping info */}
+                <div className="bg-gray-50 dark:bg-gray-750/30 p-4 rounded-2xl border dark:border-gray-750 space-y-2.5">
+                  <h5 className="font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-1.5">Thông tin giao hàng</h5>
+                  <p className="text-gray-650 dark:text-gray-300 font-semibold">{selectedOrderDetail.note || 'Không có ghi chú nhận hàng'}</p>
+                  <div className="pt-2 border-t dark:border-gray-700 flex justify-between">
+                    <span className="text-gray-400">Hình thức thanh toán:</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-200">
+                      {selectedOrderDetail.paymentMethod === 'cash' ? '💵 Tiền mặt (COD)' : 
+                       selectedOrderDetail.paymentMethod === 'transfer' ? '💳 Chuyển khoản ngân hàng' : 
+                       selectedOrderDetail.paymentMethod || 'Tiền mặt (COD)'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Trạng thái thanh toán:</span>
+                    <span className={`font-bold ${selectedOrderDetail.paymentStatus === 'paid' ? 'text-green-600 dark:text-green-400' : 'text-yellow-600'}`}>
+                      {selectedOrderDetail.paymentStatus === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Billing details calculation */}
+                {(() => {
+                  const subtotal = selectedOrderDetail.items?.reduce((sum: number, item: any) => sum + (item.price * item.qty), 0) || 0;
+                  const tierDiscountPercent = loyaltyConfig?.tiers?.find((t: any) => t.name === customer?.tier)?.discountPercent || 0;
+                  const totalRegularDiscount = selectedOrderDetail.discountAmount || 0;
+                  const memberTierDiscount = Math.min(totalRegularDiscount, Math.round(subtotal * (tierDiscountPercent / 100)));
+                  const voucherDiscount = Math.max(0, totalRegularDiscount - memberTierDiscount);
+
+                  return (
+                    <div className="bg-gray-50 dark:bg-gray-750/30 p-4 rounded-2xl border dark:border-gray-750 space-y-2.5">
+                      <h5 className="font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-1.5 font-sans">Chi tiết thanh toán</h5>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-gray-450">Tạm tính:</span>
+                        <span className="font-semibold text-gray-700 dark:text-gray-250">{subtotal.toLocaleString()}đ</span>
+                      </div>
+
+                      {memberTierDiscount > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-455">Ưu đãi hạng ({customer?.tier} -{tierDiscountPercent}%):</span>
+                          <span className="text-amber-600 dark:text-amber-405 font-bold">-{memberTierDiscount.toLocaleString()}đ</span>
+                        </div>
+                      )}
+
+                      {voucherDiscount > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-455">Voucher áp dụng:</span>
+                          <span className="text-emerald-600 dark:text-emerald-405 font-bold">-{voucherDiscount.toLocaleString()}đ</span>
+                        </div>
+                      )}
+
+                      {selectedOrderDetail.loyaltyDiscount > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-455">Dùng điểm ({selectedOrderDetail.loyaltyPointsUsed || 0} điểm):</span>
+                          <span className="text-indigo-650 dark:text-indigo-405 font-bold">-{selectedOrderDetail.loyaltyDiscount.toLocaleString()}đ</span>
+                        </div>
+                      )}
+
+                      <div className="pt-2 border-t dark:border-gray-700 flex justify-between items-center text-sm">
+                        <span className="font-extrabold text-gray-800 dark:text-white">Tổng cộng:</span>
+                        <span className="text-base font-black text-primary dark:text-indigo-400">{selectedOrderDetail.totalAmount?.toLocaleString()}đ</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-3">
+                <h5 className="font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-1.5">Sản phẩm đã chọn</h5>
+                <div className="divide-y dark:divide-gray-700 max-h-[220px] overflow-y-auto pr-1.5 custom-scrollbar">
+                  {selectedOrderDetail.items?.map((item: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <div className="w-10 h-10 bg-gray-50 dark:bg-gray-700 rounded-xl shrink-0 overflow-hidden border dark:border-gray-700">
+                        {item.product?.images?.length > 0 ? (
+                          <img src={item.product.images[0]?.startsWith('http') ? item.product.images[0] : `${API_BASE}${item.product.images[0]}`} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={14}/></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{item.product?.name || item.productName}</p>
+                        <p className="text-[10px] text-gray-450 mt-0.5">x{item.qty} · {item.price?.toLocaleString()}đ</p>
+                      </div>
+                      <span className="font-extrabold text-gray-750 dark:text-gray-200 shrink-0">{(item.price * item.qty).toLocaleString()}đ</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

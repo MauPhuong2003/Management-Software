@@ -10,6 +10,8 @@ import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Account from './pages/Account';
 import Promotions from './pages/Promotions';
+import { useQuery } from '@tanstack/react-query';
+import { shopService } from './services/shopService';
 import { useAuthStore } from './store/authStore';
 
 // Protected route wrapper - saves current path to redirect back after login
@@ -21,6 +23,21 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 function App() {
+  const { token, setAuth } = useAuthStore();
+
+  const { data: profileRes } = useQuery({
+    queryKey: ['shop-profile'],
+    queryFn: shopService.getProfile,
+    enabled: !!token,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  React.useEffect(() => {
+    if (profileRes?.data && token) {
+      setAuth(profileRes.data, token);
+    }
+  }, [profileRes, token, setAuth]);
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       <Header />

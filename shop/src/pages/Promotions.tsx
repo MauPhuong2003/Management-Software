@@ -10,6 +10,7 @@ interface Promotion {
   code: string;
   name: string;
   description?: string;
+  image?: string;
   type: 'percent' | 'fixed';
   value: number;
   minOrderValue: number;

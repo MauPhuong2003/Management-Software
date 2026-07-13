@@ -23,7 +23,9 @@ import {
     getShopStoreSettings,
     shopForgotPassword,
     shopChangePassword,
-    shopSendOTP
+    shopSendOTP,
+    getShopLoyaltyConfig,
+    getShopLoyaltyHistory
 } from '../controllers/shopController';
 import { protectCustomer } from '../middlewares/authMiddleware';
 
@@ -33,6 +35,7 @@ const router = express.Router();
 // PUBLIC STOREFRONT CONFIGS & PRODUCTS
 // ===========================================
 router.get('/settings', getShopStoreSettings);
+router.get('/loyalty-config', getShopLoyaltyConfig);
 router.get('/categories', getShopCategoriesTree);
 router.get('/products', getShopProducts);
 router.get('/products/:id', getShopProductDetail);
@@ -65,6 +68,7 @@ router.get('/auth/addresses', protectCustomer, getAddresses);
 router.post('/auth/addresses', protectCustomer, addAddress);
 router.put('/auth/addresses/:id', protectCustomer, updateAddress);
 router.delete('/auth/addresses/:id', protectCustomer, deleteAddress);
+router.get('/auth/loyalty-history', protectCustomer, getShopLoyaltyHistory);
 
 // ===========================================
 // PROTECTED CUSTOMER ORDERS
