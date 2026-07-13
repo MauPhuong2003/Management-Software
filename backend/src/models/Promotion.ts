@@ -2,6 +2,9 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPromotion extends Document {
     code: string;
+    name: string;
+    description?: string;
+    image?: string;
     type: 'percent' | 'fixed';
     value: number;
     minOrderValue: number;
@@ -21,6 +24,9 @@ export interface IPromotion extends Document {
 
 const promotionSchema = new Schema<IPromotion>({
     code: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    description: { type: String, default: '' },
+    image: { type: String, default: '' },
     type: { type: String, enum: ['percent', 'fixed'], default: 'percent' },
     value: { type: Number, required: true },
     minOrderValue: { type: Number, default: 0 },

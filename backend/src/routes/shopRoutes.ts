@@ -20,7 +20,10 @@ import {
     getShopOrders,
     getShopOrderDetail,
     cancelShopOrder,
-    getShopStoreSettings
+    getShopStoreSettings,
+    shopForgotPassword,
+    shopChangePassword,
+    shopSendOTP
 } from '../controllers/shopController';
 import { protectCustomer } from '../middlewares/authMiddleware';
 
@@ -49,12 +52,15 @@ router.post('/checkout/place-order', placeShopOrder);
 // ===========================================
 router.post('/auth/register', shopRegister);
 router.post('/auth/login', shopLogin);
+router.post('/auth/send-otp', shopSendOTP);
+router.post('/auth/forgot-password', shopForgotPassword);
 
 // ===========================================
 // PROTECTED PROFILE & ADDRESSES
 // ===========================================
 router.get('/auth/profile', protectCustomer, getShopProfile);
 router.put('/auth/profile', protectCustomer, updateShopProfile);
+router.post('/auth/change-password', protectCustomer, shopChangePassword);
 router.get('/auth/addresses', protectCustomer, getAddresses);
 router.post('/auth/addresses', protectCustomer, addAddress);
 router.put('/auth/addresses/:id', protectCustomer, updateAddress);

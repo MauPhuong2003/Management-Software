@@ -3,8 +3,11 @@ import { useAuthStore } from '../store/authStore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { promotionService } from '../services/promotionService';
 import { productService } from '../services/productService';
-import { Plus, Edit2, Trash2, Tag, Infinity as InfinityIcon } from 'lucide-react';
+import { uploadService } from '../services/uploadService';
+import { Plus, Edit2, Trash2, Tag, Infinity as InfinityIcon, Upload, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
+
+const API_BASE = 'http://localhost:5000';
 
 const Promotions = () => {
   const { hasPermission } = useAuthStore();
@@ -20,6 +23,20 @@ const Promotions = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPromo, setEditingPromo] = useState<any>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [promoImage, setPromoImage] = useState('');
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    try {
+      const res = await uploadService.uploadImage(file);
+      if (res.success) {
+        setPromoImage(res.url);
+      }
+    } catch (err) {
+      alert('Không thể tải hình ảnh lên. Vui lòng thử lại!');
+    }
+  };
 
   const { register, handleSubmit, reset, watch } = useForm();
   const applyType = watch('applyType') || 'order';
@@ -28,6 +45,7 @@ const Promotions = () => {
     mutationFn: (formData: any) => {
       const payload = {
         ...formData,
+        image: promoImage,
         value: Number(formData.value) || 0,
         minOrderValue: Number(formData.minOrderValue) || 0,
         buyQty: Number(formData.buyQty) || 1,
@@ -47,6 +65,7 @@ const Promotions = () => {
       reset();
       setEditingPromo(null);
       setSelectedProducts([]);
+      setPromoImage('');
     }
   });
 
@@ -60,6 +79,8 @@ const Promotions = () => {
     if (promo) {
       reset({ 
         code: promo.code || '',
+        name: promo.name || '',
+        description: promo.description || '',
         type: promo.type || 'percent',
         value: promo.value || 0,
         minOrderValue: promo.minOrderValue || 0,
@@ -74,10 +95,13 @@ const Promotions = () => {
         usageLimit: promo.usageLimit !== null && promo.usageLimit !== undefined ? promo.usageLimit : '',
         limitPerUser: promo.limitPerUser !== null && promo.limitPerUser !== undefined ? promo.limitPerUser : ''
       });
+      setPromoImage(promo.image || '');
       setSelectedProducts(promo.applyProductIds ? promo.applyProductIds.map((p: any) => p._id || p) : []);
     } else {
       reset({ 
         code: '', 
+        name: '',
+        description: '',
         type: 'percent', 
         value: 0, 
         minOrderValue: 0, 
@@ -92,6 +116,7 @@ const Promotions = () => {
         usageLimit: '',
         limitPerUser: ''
       });
+      setPromoImage('');
       setSelectedProducts([]);
     }
     setIsModalOpen(true);
@@ -124,7 +149,19 @@ const Promotions = () => {
           <tbody>
             {isLoading ? <tr><td colSpan={7} className="p-4 text-center text-gray-500">Đang tải...</td></tr> : data?.data?.length === 0 ? <tr><td colSpan={7} className="p-4 text-center text-gray-500">Không có khuyến mãi nào</td></tr> : data?.data?.map((item: any) => (
               <tr key={item._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <td className="p-4 text-primary font-bold">{item.code}</td>
+                <td className="p-4">
+                  <div className="flex items-center gap-3">
+                    {item.image ? (
+                      <img src={item.image.startsWith('http') ? item.image : `${API_BASE}${item.image}`} alt={item.name} className="w-10 h-10 object-cover rounded-lg border dark:border-gray-700 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-400 shrink-0"><Tag size={16}/></div>
+                    )}
+                    <div className="flex flex-col">
+                      <span className="text-primary font-bold">{item.code}</span>
+                      <span className="text-xs font-semibold text-gray-850 dark:text-gray-205 line-clamp-1">{item.name || 'Chưa đặt tên'}</span>
+                    </div>
+                  </div>
+                </td>
                 <td className="p-4 text-gray-800 dark:text-gray-200">
                   <div className="flex flex-col gap-1 text-sm">
                     <div>
@@ -195,6 +232,32 @@ const Promotions = () => {
             <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white pb-2 border-b dark:border-gray-700">{editingPromo ? 'Sửa Khuyến mãi' : 'Thêm Khuyến mãi'}</h3>
             <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">Tên Khuyến mãi *</label>
+                  <input {...register('name')} placeholder="Ví dụ: Ưu đãi hè rực rỡ" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm" required />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">Mô tả chi tiết</label>
+                  <textarea {...register('description')} rows={2} placeholder="Nhập mô tả thể lệ chương trình hoặc điều kiện áp dụng..." className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm"></textarea>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium mb-2 dark:text-gray-300">Hình ảnh đại diện (Tỉ lệ 1:1)</label>
+                  <div className="flex items-center gap-4">
+                    {promoImage ? (
+                      <div className="relative w-20 h-20 border rounded-xl overflow-hidden dark:border-gray-700 bg-gray-50 flex items-center justify-center shrink-0">
+                        <img src={promoImage.startsWith('http') ? promoImage : `${API_BASE}${promoImage}`} alt="Promo preview" className="w-full h-full object-cover" />
+                        <button type="button" onClick={() => setPromoImage('')} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 cursor-pointer"><X size={10} /></button>
+                      </div>
+                    ) : (
+                      <label className="w-20 h-20 border-2 border-dashed border-gray-350 dark:border-gray-650 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary dark:hover:border-primary transition-colors text-gray-500 dark:text-gray-400 shrink-0">
+                        <Upload size={18} />
+                        <span className="text-[10px] mt-1">Tải ảnh lên</span>
+                        <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                      </label>
+                    )}
+                    <p className="text-[10px] text-gray-400 font-medium">Khuyên dùng ảnh hình vuông (1:1) để hiển thị tối ưu trên vé giảm giá.</p>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 dark:text-gray-300">Mã giảm giá (Code)</label>
                   <input {...register('code')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white uppercase font-bold text-primary text-sm" required />

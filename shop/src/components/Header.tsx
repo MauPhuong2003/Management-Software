@@ -13,7 +13,10 @@ import {
   LogOut, 
   MapPin, 
   Package, 
-  Home
+  Home,
+  Ticket,
+  Copy,
+  Check
 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000';
@@ -32,6 +35,8 @@ export const Header = () => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+
 
   // Fetch settings & category tree
   useEffect(() => {
@@ -143,6 +148,12 @@ export const Header = () => {
             </div>
             
             <Link to="/catalog" className="hover:text-primary dark:hover:text-indigo-400 transition-colors">Tất cả sản phẩm</Link>
+            <Link 
+              to="/promotions"
+              className="hover:text-primary dark:hover:text-indigo-400 transition-colors flex items-center gap-1 font-bold text-xs"
+            >
+              <Ticket size={14} className="text-amber-500 animate-pulse"/> Ưu đãi
+            </Link>
           </nav>
 
           {/* Search bar with debounce suggestions */}
@@ -170,7 +181,7 @@ export const Header = () => {
                     className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     {item.images && item.images.length > 0 ? (
-                      <img src={`${API_BASE}${item.images[0]}`} alt="Product" className="w-8 h-8 object-cover rounded" />
+                      <img src={item.images[0]?.startsWith('http') ? item.images[0] : `${API_BASE}${item.images[0]}`} alt="Product" className="w-8 h-8 object-cover rounded" />
                     ) : (
                       <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center text-gray-400"><Package size={14}/></div>
                     )}
@@ -205,7 +216,7 @@ export const Header = () => {
               >
                 <button className="flex items-center gap-1 text-sm font-bold text-gray-700 dark:text-gray-200 cursor-pointer py-2">
                   {customer.avatar ? (
-                    <img src={`${API_BASE}${customer.avatar}`} alt="Avatar" className="w-7 h-7 rounded-full object-cover border" />
+                    <img src={customer.avatar?.startsWith('http') ? customer.avatar : `${API_BASE}${customer.avatar}`} alt="Avatar" className="w-7 h-7 rounded-full object-cover border" />
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-indigo-50 text-primary dark:bg-indigo-950 dark:text-indigo-400 flex items-center justify-center"><User size={14}/></div>
                   )}
@@ -260,6 +271,13 @@ export const Header = () => {
               <nav className="flex flex-col gap-4 text-xs font-bold text-gray-700 dark:text-gray-200">
                 <Link to="/" onClick={() => setIsMobileOpen(false)} className="hover:text-primary py-1.5 border-b dark:border-gray-700 flex items-center gap-1.5"><Home size={14}/> Trang chủ</Link>
                 <Link to="/catalog" onClick={() => setIsMobileOpen(false)} className="hover:text-primary py-1.5 border-b dark:border-gray-700 flex items-center gap-1.5"><Package size={14}/> Tất cả sản phẩm</Link>
+                <Link 
+                  to="/promotions" 
+                  onClick={() => setIsMobileOpen(false)} 
+                  className="hover:text-primary py-1.5 border-b dark:border-gray-700 flex items-center gap-1.5 font-bold text-xs"
+                >
+                  <Ticket size={14} className="text-amber-500"/> Ưu đãi của Shop
+                </Link>
                 
                 {/* Mobile categories expandable list */}
                 <div className="py-1">

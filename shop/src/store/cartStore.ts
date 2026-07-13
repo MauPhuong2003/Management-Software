@@ -11,19 +11,30 @@ export interface CartItem {
   };
   variantSku: string | null;
   qty: number;
-  price: number; // variant price or priceSale
+  price: number;
   selectedAttributes: { key: string; value: string }[];
+}
+
+export type CouponSlot = 'order' | 'product' | 'shipping' | 'buy_x_get_y';
+
+export interface CouponsState {
+  order: any | null;
+  product: any | null;
+  shipping: any | null;
+  buy_x_get_y: any | null;
 }
 
 interface CartState {
   items: CartItem[];
-  coupon: any | null;
+  coupons: CouponsState;
+  coupon: any | null; // legacy compat — first applied coupon
   addItem: (item: CartItem) => void;
   updateQty: (productId: string, variantSku: string | null, qty: number) => void;
   removeItem: (productId: string, variantSku: string | null) => void;
   clearCart: () => void;
   applyCoupon: (voucher: any) => void;
-  removeCoupon: () => void;
+  removeCoupon: (type?: CouponSlot) => void;
+  getAppliedCoupons: () => any[];
   getCartSubtotal: () => number;
   getCartTotalItems: () => number;
 }
@@ -36,18 +47,25 @@ const loadCartItems = (): CartItem[] => {
   }
 };
 
+const emptyCoupons = (): CouponsState => ({
+  order: null,
+  product: null,
+  shipping: null,
+  buy_x_get_y: null,
+});
+
 export const useCartStore = create<CartState>((set, get) => ({
   items: loadCartItems(),
-  coupon: null,
+  coupons: emptyCoupons(),
+  coupon: null, // overridden below as computed getter via selector pattern
 
   addItem: (newItem) => {
     set((state) => {
       const existingIndex = state.items.findIndex(
-        (item) => 
-          item.product._id === newItem.product._id && 
+        (item) =>
+          item.product._id === newItem.product._id &&
           item.variantSku === newItem.variantSku
       );
-
       let updatedItems;
       if (existingIndex !== -1) {
         updatedItems = [...state.items];
@@ -55,7 +73,6 @@ export const useCartStore = create<CartState>((set, get) => ({
       } else {
         updatedItems = [...state.items, newItem];
       }
-
       localStorage.setItem('shop_cart', JSON.stringify(updatedItems));
       return { items: updatedItems };
     });
@@ -86,15 +103,36 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   clearCart: () => {
     localStorage.removeItem('shop_cart');
-    set({ items: [], coupon: null });
+    set({ items: [], coupons: emptyCoupons(), coupon: null });
   },
 
+  // applyCoupon auto-detects applyType and puts voucher in the right slot
   applyCoupon: (voucher) => {
-    set({ coupon: voucher });
+    const type: CouponSlot = voucher.applyType || 'order';
+    set((state) => {
+      const newCoupons = { ...state.coupons, [type]: voucher };
+      const firstApplied = newCoupons.order || newCoupons.product || newCoupons.shipping || newCoupons.buy_x_get_y || null;
+      return { coupons: newCoupons, coupon: firstApplied };
+    });
   },
 
-  removeCoupon: () => {
-    set({ coupon: null });
+  // removeCoupon(type) removes specific slot; removeCoupon() clears all
+  removeCoupon: (type?: CouponSlot) => {
+    if (type) {
+      set((state) => {
+        const newCoupons = { ...state.coupons, [type]: null };
+        const firstApplied = newCoupons.order || newCoupons.product || newCoupons.shipping || newCoupons.buy_x_get_y || null;
+        return { coupons: newCoupons, coupon: firstApplied };
+      });
+    } else {
+      set({ coupons: emptyCoupons(), coupon: null });
+    }
+  },
+
+  // Returns array of all currently applied coupons
+  getAppliedCoupons: () => {
+    const c = get().coupons;
+    return [c.order, c.product, c.shipping, c.buy_x_get_y].filter(Boolean);
   },
 
   getCartSubtotal: () => {
@@ -105,3 +143,5 @@ export const useCartStore = create<CartState>((set, get) => ({
     return get().items.reduce((sum, item) => sum + item.qty, 0);
   }
 }));
+
+

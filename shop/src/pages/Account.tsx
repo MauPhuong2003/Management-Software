@@ -18,7 +18,9 @@ import {
   Truck,
   Star,
   AlertCircle,
-  XCircle
+  XCircle,
+  RefreshCw,
+  Lock
 } from 'lucide-react';
 
 const ORDER_STATUSES: Record<string, { label: string; color: string; icon: any }> = {
@@ -54,6 +56,43 @@ export const Account = () => {
     if (!customer) navigate('/login');
   }, [customer]);
 
+  // Change password state
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      alert('Vui lòng điền đầy đủ các thông tin!');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert('Mật khẩu mới và xác nhận mật khẩu không trùng khớp!');
+      return;
+    }
+    if (newPassword.length < 6) {
+      alert('Mật khẩu mới phải có ít nhất 6 ký tự!');
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      const res = await shopService.changePassword({ oldPassword, newPassword });
+      if (res.success) {
+        alert('Đổi mật khẩu thành công!');
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại!');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   // Profile query
   const { data: profileData, refetch: refetchProfile } = useQuery({
     queryKey: ['shop-profile'],
@@ -70,11 +109,12 @@ export const Account = () => {
   });
   const addresses = addressesData?.data || [];
 
-  // Orders query
-  const { data: ordersData } = useQuery({
+  // Orders query with 5s polling for live status tracking
+  const { data: ordersData, refetch: refetchOrders } = useQuery({
     queryKey: ['shop-orders', activeTab],
     queryFn: () => shopService.getOrders(),
-    enabled: !!customer
+    enabled: !!customer,
+    refetchInterval: 5000
   });
   const orders = ordersData?.data || [];
 
@@ -96,10 +136,10 @@ export const Account = () => {
     }
   };
 
-  // Address form with province/district/ward cascade
+  // Address form with province/district/ward cascade and type
   const [showAddAddr, setShowAddAddr] = useState(false);
   const [savingAddr, setSavingAddr] = useState(false);
-  const EMPTY_ADDR = { label: '', name: '', phone: '', province: '', district: '', ward: '', detail: '', isDefault: false };
+  const EMPTY_ADDR = { label: '', addressType: 'Sau sáp nhập', name: '', phone: '', province: '', district: '', ward: '', detail: '', isDefault: false };
   const [addrForm, setAddrForm] = useState<any>(EMPTY_ADDR);
 
   // Cascade location data
@@ -109,6 +149,11 @@ export const Account = () => {
   const [loadingDistricts, setLoadingDistricts] = useState(false);
   const [loadingWards, setLoadingWards] = useState(false);
 
+  // OSM street autocomplete suggestions
+  const [streetSuggestions, setStreetSuggestions] = useState<string[]>([]);
+  const [loadingStreets, setLoadingStreets] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
   // Fetch provinces once on mount
   useEffect(() => {
     fetch('https://provinces.open-api.vn/api/?depth=1')
@@ -116,6 +161,66 @@ export const Account = () => {
       .then(data => setProvinces(Array.isArray(data) ? data : []))
       .catch(() => setProvinces([]));
   }, []);
+
+  // Debounced fetch for street/road name from OpenStreetMap Nominatim
+  useEffect(() => {
+    if (addrForm.addressType === 'Sau sáp nhập' && (!addrForm.province || !addrForm.district || !addrForm.ward)) {
+      setStreetSuggestions([]);
+      return;
+    }
+    if (!addrForm.detail || addrForm.detail.trim().length < 2) {
+      setStreetSuggestions([]);
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setLoadingStreets(true);
+      try {
+        const queryParts = [];
+        if (addrForm.detail.trim()) queryParts.push(addrForm.detail.trim());
+        if (addrForm.ward) queryParts.push(addrForm.ward);
+        if (addrForm.district) queryParts.push(addrForm.district);
+        if (addrForm.province) queryParts.push(addrForm.province);
+
+        const q = queryParts.join(', ');
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&countrycodes=vn&limit=10`;
+        
+        const res = await fetch(url, {
+          headers: {
+            'Accept-Language': 'vi,en;q=0.9',
+            'User-Agent': 'WebBanHangShopApp/1.0'
+          }
+        });
+        const data = await res.json();
+        
+        if (Array.isArray(data)) {
+          const suggestions: string[] = [];
+          data.forEach((item: any) => {
+            const road = item.address?.road || item.address?.pedestrian;
+            if (road && !suggestions.includes(road)) {
+              suggestions.push(road);
+            }
+            // Fallback to name if it's classified as highway/road
+            const name = item.name;
+            if (name && !suggestions.includes(name) && (item.class === 'highway' || item.type === 'residential' || item.type === 'tertiary')) {
+              suggestions.push(name);
+            }
+          });
+          setStreetSuggestions(suggestions);
+          setShowSuggestions(suggestions.length > 0);
+        } else {
+          setStreetSuggestions([]);
+        }
+      } catch (error) {
+        console.error("Error fetching OSM street suggestions:", error);
+        setStreetSuggestions([]);
+      } finally {
+        setLoadingStreets(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(delayDebounce);
+  }, [addrForm.detail, addrForm.ward, addrForm.district, addrForm.province, addrForm.addressType]);
 
   const handleProvinceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const code = e.target.value;
@@ -155,8 +260,8 @@ export const Account = () => {
   };
 
   const handleSaveAddress = async () => {
-    if (!addrForm.name.trim() || !addrForm.phone.trim() || !addrForm.province ||
-        !addrForm.district || !addrForm.ward || !addrForm.detail.trim()) {
+    if (!addrForm.name.trim() || !addrForm.phone.trim() || !addrForm.province.trim() ||
+        !addrForm.district.trim() || !addrForm.ward.trim() || !addrForm.detail.trim()) {
       alert('Vui lòng điền đầy đủ: Họ tên, Số điện thoại, Tỉnh/Thành, Quận/Huyện, Phường/Xã và Địa chỉ chi tiết');
       return;
     }
@@ -168,6 +273,7 @@ export const Account = () => {
       setAddrForm(EMPTY_ADDR);
       setDistricts([]);
       setWards([]);
+      setStreetSuggestions([]);
     } catch (e: any) {
       alert(e.response?.data?.message || 'Lỗi lưu địa chỉ');
     } finally {
@@ -207,6 +313,7 @@ export const Account = () => {
     { key: 'profile', label: 'Hồ sơ cá nhân', icon: <User size={14}/> },
     { key: 'addresses', label: 'Địa chỉ giao hàng', icon: <MapPin size={14}/> },
     { key: 'orders', label: 'Đơn hàng của tôi', icon: <Package size={14}/> },
+    { key: 'security', label: 'Đổi mật khẩu', icon: <Lock size={14}/> },
   ];
 
   return (
@@ -222,7 +329,7 @@ export const Account = () => {
           <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-5 space-y-4">
             <div className="flex flex-col items-center text-center gap-2.5">
               {profile?.avatar ? (
-                <img src={`${API_BASE}${profile.avatar}`} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary" />
+                <img src={profile.avatar?.startsWith('http') ? profile.avatar : `${API_BASE}${profile.avatar}`} alt="avatar" className="w-16 h-16 rounded-full object-cover border-2 border-primary" />
               ) : (
                 <div className="w-16 h-16 rounded-full bg-indigo-50 dark:bg-indigo-950 text-primary flex items-center justify-center text-2xl font-black">
                   {customer.name?.slice(0, 1)}
@@ -352,16 +459,20 @@ export const Account = () => {
           {/* ADDRESSES TAB */}
           {activeTab === 'addresses' && (
             <div className="space-y-4">
+
               {addresses.map((addr: any) => (
                 <div key={addr._id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-5 flex justify-between items-start gap-4">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-extrabold text-gray-800 dark:text-white">{addr.name}</span>
                       {addr.isDefault && (
                         <span className="bg-primary text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-full uppercase">Mặc định</span>
                       )}
                       {addr.label && (
                         <span className="bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full uppercase">{addr.label}</span>
+                      )}
+                      {addr.addressType && (
+                        <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full uppercase">{addr.addressType}</span>
                       )}
                     </div>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400">{addr.phone}</p>
@@ -382,6 +493,33 @@ export const Account = () => {
                 <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-5 space-y-4">
                   <h4 className="text-xs font-black text-gray-800 dark:text-white uppercase">Thêm địa chỉ mới</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                    {/* Pre-merger vs Post-merger selector */}
+                    <div className="sm:col-span-2 space-y-1.5">
+                      <label className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase">Loại địa chỉ hành chính *</label>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700 dark:text-gray-200">
+                          <input
+                            type="radio"
+                            name="addressType"
+                            checked={addrForm.addressType === 'Sau sáp nhập'}
+                            onChange={() => setAddrForm((p: any) => ({ ...p, addressType: 'Sau sáp nhập', province: '', district: '', ward: '' }))}
+                            className="cursor-pointer font-bold"
+                          />
+                          Sau sáp nhập (Hiện tại / Mới)
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700 dark:text-gray-200">
+                          <input
+                            type="radio"
+                            name="addressType"
+                            checked={addrForm.addressType === 'Trước sáp nhập'}
+                            onChange={() => setAddrForm((p: any) => ({ ...p, addressType: 'Trước sáp nhập', province: '', district: '', ward: '' }))}
+                            className="cursor-pointer font-bold"
+                          />
+                          Trước sáp nhập (Cũ / Lịch sử)
+                        </label>
+                      </div>
+                    </div>
 
                     {/* Label */}
                     <div className="space-y-1.5">
@@ -410,57 +548,128 @@ export const Account = () => {
                         className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30" />
                     </div>
 
-                    {/* Province */}
+                    {/* Province Selection */}
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase">Tỉnh / Thành phố *</label>
-                      <select onChange={handleProvinceChange}
-                        className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
-                        <option value="">-- Chọn Tỉnh / Thành --</option>
-                        {provinces.map((p: any) => (
-                          <option key={p.code} value={String(p.code)}>{p.name}</option>
-                        ))}
-                      </select>
+                      {addrForm.addressType === 'Sau sáp nhập' ? (
+                        <select
+                          value={provinces.find(p => p.name === addrForm.province)?.code || ''}
+                          onChange={handleProvinceChange}
+                          className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+                          <option value="">-- Chọn Tỉnh / Thành --</option>
+                          {provinces.map((p: any) => (
+                            <option key={p.code} value={String(p.code)}>{p.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Thành phố Hồ Chí Minh"
+                          value={addrForm.province}
+                          onChange={e => setAddrForm((p: any) => ({ ...p, province: e.target.value }))}
+                          className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      )}
                     </div>
 
-                    {/* District */}
+                    {/* District Selection */}
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase">Quận / Huyện *</label>
-                      <select onChange={handleDistrictChange}
-                        disabled={districts.length === 0 || loadingDistricts}
-                        className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer disabled:opacity-50">
-                        <option value="">{loadingDistricts ? 'Đang tải...' : '-- Chọn Quận / Huyện --'}</option>
-                        {districts.map((d: any) => (
-                          <option key={d.code} value={String(d.code)}>{d.name}</option>
-                        ))}
-                      </select>
+                      {addrForm.addressType === 'Sau sáp nhập' ? (
+                        <select
+                          value={districts.find(d => d.name === addrForm.district)?.code || ''}
+                          onChange={handleDistrictChange}
+                          disabled={districts.length === 0 || loadingDistricts}
+                          className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer disabled:opacity-50">
+                          <option value="">{loadingDistricts ? 'Đang tải...' : '-- Chọn Quận / Huyện --'}</option>
+                          {districts.map((d: any) => (
+                            <option key={d.code} value={String(d.code)}>{d.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Quận 2, Quận 9..."
+                          value={addrForm.district}
+                          onChange={e => setAddrForm((p: any) => ({ ...p, district: e.target.value }))}
+                          className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      )}
                     </div>
 
-                    {/* Ward */}
+                    {/* Ward Selection */}
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase">Phường / Xã *</label>
-                      <select onChange={handleWardChange}
-                        disabled={wards.length === 0 || loadingWards}
-                        className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer disabled:opacity-50">
-                        <option value="">{loadingWards ? 'Đang tải...' : '-- Chọn Phường / Xã --'}</option>
-                        {wards.map((w: any) => (
-                          <option key={w.code} value={String(w.code)}>{w.name}</option>
-                        ))}
-                      </select>
+                      {addrForm.addressType === 'Sau sáp nhập' ? (
+                        <select
+                          value={wards.find(w => w.name === addrForm.ward)?.code || ''}
+                          onChange={handleWardChange}
+                          disabled={wards.length === 0 || loadingWards}
+                          className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer disabled:opacity-50">
+                          <option value="">{loadingWards ? 'Đang tải...' : '-- Chọn Phường / Xã --'}</option>
+                          {wards.map((w: any) => (
+                            <option key={w.code} value={String(w.code)}>{w.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Phường Long Bình..."
+                          value={addrForm.ward}
+                          onChange={e => setAddrForm((p: any) => ({ ...p, ward: e.target.value }))}
+                          className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      )}
                     </div>
 
-                    {/* Street detail */}
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase">Số nhà, Tên đường *</label>
-                      <input type="text" placeholder="Số 12, Đường Nguyễn Huệ"
+                    {/* Street detail with OSM Autocomplete */}
+                    <div className="space-y-1.5 relative">
+                      <label className="text-[10px] font-extrabold text-gray-500 dark:text-gray-400 uppercase flex justify-between items-center">
+                        <span>Số nhà, Tên đường *</span>
+                        {loadingStreets && <span className="text-[9px] text-primary animate-pulse normal-case font-normal">Đang tìm đường...</span>}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Số 12, Đường Nguyễn Huệ"
                         value={addrForm.detail}
-                        onChange={e => setAddrForm((p: any) => ({ ...p, detail: e.target.value }))}
-                        className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30" />
+                        onChange={e => {
+                          setAddrForm((p: any) => ({ ...p, detail: e.target.value }));
+                          setShowSuggestions(true);
+                        }}
+                        onFocus={() => {
+                          if (streetSuggestions.length > 0) setShowSuggestions(true);
+                        }}
+                        onBlur={() => {
+                          // delay closing suggestions to allow clicks to register
+                          setTimeout(() => setShowSuggestions(false), 200);
+                        }}
+                        className="w-full px-3 py-2.5 border dark:border-gray-600 rounded-xl text-xs font-bold bg-gray-50 dark:bg-gray-750 outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      
+                      {/* OSM Autocomplete Dropdown */}
+                      {showSuggestions && streetSuggestions.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                          {streetSuggestions.map((st, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setAddrForm((p: any) => ({ ...p, detail: st }));
+                                setShowSuggestions(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/30 text-gray-700 dark:text-gray-200 cursor-pointer font-medium block truncate"
+                            >
+                              📍 {st}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Preview full address */}
                     {(addrForm.detail || addrForm.ward || addrForm.district || addrForm.province) && (
                       <div className="sm:col-span-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-3">
-                        <p className="text-[10px] font-extrabold text-indigo-500 uppercase mb-1">Xem trước địa chỉ</p>
+                        <p className="text-[10px] font-extrabold text-indigo-500 uppercase mb-1">Xem trước địa chỉ ({addrForm.addressType})</p>
                         <p className="text-xs font-bold text-gray-700 dark:text-gray-200">
                           {[addrForm.detail, addrForm.ward, addrForm.district, addrForm.province].filter(Boolean).join(', ')}
                         </p>
@@ -482,7 +691,7 @@ export const Account = () => {
                       className="px-5 py-2.5 bg-primary hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold cursor-pointer transition-colors disabled:opacity-60">
                       {savingAddr ? 'Đang lưu...' : 'Lưu địa chỉ'}
                     </button>
-                    <button onClick={() => { setShowAddAddr(false); setAddrForm(EMPTY_ADDR); setDistricts([]); setWards([]); }}
+                    <button onClick={() => { setShowAddAddr(false); setAddrForm(EMPTY_ADDR); setDistricts([]); setWards([]); setStreetSuggestions([]); }}
                       className="px-4 py-2.5 border dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl text-xs font-bold cursor-pointer">
                       Hủy
                     </button>
@@ -502,6 +711,22 @@ export const Account = () => {
           {/* ORDERS TAB */}
           {activeTab === 'orders' && (
             <div className="space-y-4">
+              
+              {/* Tab Header with Manual Refresh */}
+              <div className="flex justify-between items-center bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-4 flex-wrap gap-2">
+                <div>
+                  <h3 className="text-xs font-black text-gray-800 dark:text-white uppercase tracking-wider">Theo dõi đơn hàng</h3>
+                  <p className="text-[10px] text-gray-400">Tự động cập nhật hành trình mỗi 5 giây</p>
+                </div>
+                <button
+                  onClick={() => refetchOrders()}
+                  className="px-3 py-2 border dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl text-[11px] font-bold text-gray-600 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <RefreshCw size={12} className="animate-spin-slow text-primary" />
+                  Cập nhật hành trình
+                </button>
+              </div>
+
               {orders.length === 0 ? (
                 <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl py-16 text-center space-y-3">
                   <Package size={40} className="mx-auto text-gray-200 dark:text-gray-700" />
@@ -534,27 +759,55 @@ export const Account = () => {
                         const stepInfo = ORDER_STATUSES[step];
                         const currentIdx = Object.keys(ORDER_STATUSES).indexOf(order.orderStatus);
                         const stepIdx = Object.keys(ORDER_STATUSES).indexOf(step);
-                        const isDone = stepIdx <= currentIdx && order.orderStatus !== 'cancelled';
+                        
+                        const isCompleted = stepIdx < currentIdx && order.orderStatus !== 'cancelled';
+                        const isCurrent = stepIdx === currentIdx && order.orderStatus !== 'cancelled';
+                        const isPending = stepIdx > currentIdx || order.orderStatus === 'cancelled';
+
+                        let circleClass = "";
+                        let circleContent = null;
+
+                        if (isCompleted) {
+                          circleClass = "bg-green-500 border-green-500 text-white";
+                          circleContent = <Check size={10}/>;
+                        } else if (isCurrent) {
+                          circleClass = "bg-primary border-primary text-white ring-4 ring-primary/20 animate-pulse";
+                          circleContent = idx + 1;
+                        } else {
+                          circleClass = "bg-gray-50 dark:bg-gray-750 border-gray-200 dark:border-gray-600 text-gray-400";
+                          circleContent = idx + 1;
+                        }
+
+                        let lineClass = "bg-gray-100 dark:bg-gray-700";
+                        if (order.orderStatus !== 'cancelled') {
+                          if (stepIdx < currentIdx) {
+                            lineClass = "bg-green-500";
+                          } else if (stepIdx === currentIdx) {
+                            lineClass = "bg-primary/30";
+                          }
+                        }
+
                         return (
-                          <div key={step} className="flex flex-col items-center gap-1 relative">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-extrabold border-2 z-10 ${
-                              isDone ? 'bg-primary border-primary text-white' : 'bg-gray-50 dark:bg-gray-750 border-gray-200 dark:border-gray-600 text-gray-300'
-                            }`}>
-                              {isDone ? <Check size={10}/> : idx + 1}
+                          <div key={step} className="flex flex-col items-center gap-1.5 relative">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-extrabold border-2 z-10 transition-all duration-300 ${circleClass}`}>
+                              {circleContent}
                             </div>
                             {idx < 3 && (
-                              <div className={`absolute top-3 left-1/2 w-full h-0.5 ${isDone && stepIdx < currentIdx ? 'bg-primary' : 'bg-gray-100 dark:bg-gray-700'}`} />
+                              <div className={`absolute top-3 left-1/2 w-full h-0.5 transition-all duration-300 ${lineClass}`} />
                             )}
-                            <p className="text-[8px] text-gray-400 font-semibold text-center leading-tight">{stepInfo.label}</p>
+                            <p className={`text-[8px] font-bold text-center leading-tight ${isCurrent ? 'text-primary' : 'text-gray-400'}`}>
+                              {stepInfo.label}
+                            </p>
                           </div>
                         );
                       })}
+
                       {order.orderStatus === 'cancelled' && (
-                        <div className="flex flex-col items-center gap-1">
-                          <div className="w-6 h-6 rounded-full flex items-center justify-center border-2 bg-red-50 border-red-200 text-red-400">
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center border-2 bg-red-500 border-red-500 text-white">
                             <XCircle size={10}/>
                           </div>
-                          <p className="text-[8px] text-red-400 font-semibold">Đã hủy</p>
+                          <p className="text-[8px] text-red-500 font-bold">Đã hủy</p>
                         </div>
                       )}
                     </div>
@@ -565,7 +818,7 @@ export const Account = () => {
                         <div key={idx} className="flex items-center gap-2.5">
                           <div className="w-8 h-8 bg-gray-50 dark:bg-gray-700 rounded-lg shrink-0 overflow-hidden">
                             {item.product?.images?.length > 0 ? (
-                              <img src={`${API_BASE}${item.product.images[0]}`} alt="" className="w-full h-full object-cover" />
+                               <img src={item.product.images[0]?.startsWith('http') ? item.product.images[0] : `${API_BASE}${item.product.images[0]}`} alt="" className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={12}/></div>
                             )}
@@ -600,6 +853,60 @@ export const Account = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {activeTab === 'security' && (
+            <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-3xl p-6 space-y-6">
+              <div>
+                <h2 className="text-base font-black text-gray-800 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <Lock size={16} className="text-primary"/> Đổi mật khẩu
+                </h2>
+                <p className="text-[10px] text-gray-400 font-medium">Bảo vệ tài khoản của bạn bằng cách sử dụng mật khẩu mạnh</p>
+              </div>
+
+              <form onSubmit={handleChangePassword} className="space-y-4 max-w-md">
+                <div className="space-y-1.5 text-left">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mật khẩu hiện tại</label>
+                  <input 
+                    type="password" 
+                    value={oldPassword} 
+                    onChange={e => setOldPassword(e.target.value)} 
+                    placeholder="Nhập mật khẩu hiện tại" 
+                    className="w-full px-4 py-2 border rounded-xl outline-none focus:border-primary dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs font-bold transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mật khẩu mới</label>
+                  <input 
+                    type="password" 
+                    value={newPassword} 
+                    onChange={e => setNewPassword(e.target.value)} 
+                    placeholder="Mật khẩu mới (ít nhất 6 ký tự)" 
+                    className="w-full px-4 py-2 border rounded-xl outline-none focus:border-primary dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs font-bold transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Xác nhận mật khẩu mới</label>
+                  <input 
+                    type="password" 
+                    value={confirmPassword} 
+                    onChange={e => setConfirmPassword(e.target.value)} 
+                    placeholder="Nhập lại mật khẩu mới" 
+                    className="w-full px-4 py-2 border rounded-xl outline-none focus:border-primary dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs font-bold transition-all"
+                  />
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isChangingPassword}
+                  className="px-6 py-2.5 bg-primary hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isChangingPassword ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
+                </button>
+              </form>
             </div>
           )}
         </main>

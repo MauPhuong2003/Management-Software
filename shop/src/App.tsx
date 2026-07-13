@@ -9,6 +9,7 @@ import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Account from './pages/Account';
+import Promotions from './pages/Promotions';
 import { useAuthStore } from './store/authStore';
 
 // Protected route wrapper - saves current path to redirect back after login
@@ -28,6 +29,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/catalog" element={<Catalog />} />
+          <Route path="/promotions" element={<Promotions />} />
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
           <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />

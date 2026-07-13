@@ -24,6 +24,8 @@ export interface ICustomer extends Document {
     email?: string;
     password?: string;
     avatar?: string;
+    otpCode?: string;
+    otpExpireTime?: Date;
     addresses?: ICustomerAddress[];
 }
 
@@ -51,6 +53,8 @@ const customerSchema = new Schema<ICustomer>({
     email: { type: String, unique: true, sparse: true },
     password: { type: String },
     avatar: { type: String, default: '' },
+    otpCode: { type: String },
+    otpExpireTime: { type: Date },
     addresses: [customerAddressSchema]
 }, { timestamps: true });
 

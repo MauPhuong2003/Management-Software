@@ -630,7 +630,7 @@ const Products = () => {
               <tr key={item._id} className="border-b dark:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
                 <td className="p-4">
                   {item.images && item.images.length > 0 ? (
-                    <img src={`${API_BASE}${item.images[0]}`} alt={item.name} className="w-12 h-12 object-cover rounded-lg border dark:border-gray-700" />
+                    <img src={item.images[0]?.startsWith('http') ? item.images[0] : `${API_BASE}${item.images[0]}`} alt={item.name} className="w-12 h-12 object-cover rounded-lg border dark:border-gray-700" />
                   ) : (
                     <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-400"><Package size={20}/></div>
                   )}
@@ -811,7 +811,7 @@ const Products = () => {
               <div className="flex flex-wrap gap-4 items-center">
                 {images.map((img, idx) => (
                   <div key={idx} className="relative w-24 h-24 border rounded-xl overflow-hidden dark:border-gray-700 bg-gray-50">
-                    <img src={`${API_BASE}${img}`} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={img?.startsWith('http') ? img : `${API_BASE}${img}`} alt="Preview" className="w-full h-full object-cover" />
                     <button type="button" onClick={() => removeImage(idx)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600"><X size={12} /></button>
                   </div>
                 ))}
@@ -945,7 +945,7 @@ const Products = () => {
                               <td className="p-3">
                                 <label className="w-12 h-12 border border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary bg-white dark:bg-gray-700 dark:border-gray-600 relative overflow-hidden">
                                   {v.image ? (
-                                    <img src={`${API_BASE}${v.image}`} alt="V" className="w-full h-full object-cover" />
+                                    <img src={v.image?.startsWith('http') ? v.image : `${API_BASE}${v.image}`} alt="V" className="w-full h-full object-cover" />
                                   ) : (
                                     <>
                                       <Upload size={14} className="text-gray-400" />

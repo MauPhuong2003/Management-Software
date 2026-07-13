@@ -30,6 +30,13 @@ export const ProductDetail = () => {
     enabled: !!id
   });
 
+  // Query active flash sale
+  const { data: flashSaleRes } = useQuery({
+    queryKey: ['shop-flash-sale'],
+    queryFn: shopService.getActiveFlashSale
+  });
+  const activeFlashSale = flashSaleRes?.data;
+
   const product = data?.data;
   const related = data?.related || [];
   const vouchers = data?.vouchers || [];
@@ -71,8 +78,19 @@ export const ProductDetail = () => {
   };
 
   const selectedVariant = resolveSelectedVariant();
-  const displayPrice = selectedVariant?.price ?? product.priceSale;
-  const displayStock = selectedVariant?.stock ?? product.variants.reduce((sum: number, v: any) => sum + v.stock, 0);
+
+  // Find if this product is part of active flash sale
+  const flashSaleItem = activeFlashSale?.products?.find(
+    (p: any) => p.product?._id === product?._id && p.active
+  );
+
+  const displayPrice = flashSaleItem
+    ? Math.max(0, product.priceSale - (product.priceSale * (flashSaleItem.discountPercent / 100)))
+    : (selectedVariant?.price ?? product.priceSale);
+
+  const displayStock = flashSaleItem
+    ? Math.max(0, flashSaleItem.limitQty - flashSaleItem.soldQty)
+    : (selectedVariant?.stock ?? product.variants.reduce((sum: number, v: any) => sum + v.stock, 0));
 
   // Get unique attribute keys and values from all variants
   const attrKeys = product.variants && product.variants.length > 0
@@ -124,7 +142,7 @@ export const ProductDetail = () => {
       alert('Vui lòng chọn phân loại sản phẩm trước khi mua!');
       return;
     }
-    addItem({
+    const buyNowItem = {
       product: {
         _id: product._id,
         name: product.name,
@@ -137,8 +155,8 @@ export const ProductDetail = () => {
       qty,
       price: displayPrice,
       selectedAttributes: Object.entries(selectedAttrs).map(([key, value]) => ({ key, value }))
-    });
-    navigate('/checkout');
+    };
+    navigate('/checkout', { state: { buyNowItem } });
   };
 
   return (
@@ -161,7 +179,7 @@ export const ProductDetail = () => {
           <div className="relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl border dark:border-gray-700 overflow-hidden">
             {product.images && product.images.length > 0 ? (
               <img 
-                src={`${API_BASE}${product.images[activeImg]}`} 
+                src={product.images[activeImg]?.startsWith('http') ? product.images[activeImg] : `${API_BASE}${product.images[activeImg]}`} 
                 alt={product.name} 
                 className="w-full h-full object-cover"
               />
@@ -201,7 +219,7 @@ export const ProductDetail = () => {
                     idx === activeImg ? 'border-primary' : 'border-transparent hover:border-gray-300'
                   }`}
                 >
-                  <img src={`${API_BASE}${img}`} alt="" className="w-full h-full object-cover" />
+                  <img src={img?.startsWith('http') ? img : `${API_BASE}${img}`} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
@@ -210,6 +228,23 @@ export const ProductDetail = () => {
 
         {/* Right: Product info & selection */}
         <div className="space-y-6">
+          
+          {/* Flash Sale Banner */}
+          {flashSaleItem && (
+            <div className="bg-red-500 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-sm animate-pulse">
+              <div className="flex items-center gap-2">
+                <Zap size={16} className="fill-current text-yellow-300" />
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wider">Đang Flash Sale!</p>
+                  <p className="text-[10px] opacity-90">Giảm ngay {flashSaleItem.discountPercent}%</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] uppercase opacity-75 font-bold">Số lượng có hạn</p>
+                <p className="text-xs font-mono font-black">{displayStock} sản phẩm còn lại</p>
+              </div>
+            </div>
+          )}
           
           {/* Product title & SKU */}
           <div className="space-y-1.5">
@@ -355,7 +390,7 @@ export const ProductDetail = () => {
               >
                 <div className="aspect-square bg-gray-50 dark:bg-gray-750 overflow-hidden">
                   {prod.images && prod.images.length > 0 ? (
-                    <img src={`${API_BASE}${prod.images[0]}`} alt={prod.name} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform" />
+                    <img src={prod.images[0]?.startsWith('http') ? prod.images[0] : `${API_BASE}${prod.images[0]}`} alt={prod.name} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={32}/></div>
                   )}

@@ -10,7 +10,9 @@ import {
   ChevronRight, 
   SlidersHorizontal,
   ChevronLeft,
-  ShoppingBag
+  ShoppingBag,
+  Heart,
+  Plus
 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000';
@@ -237,36 +239,86 @@ export const Catalog = () => {
                 <Link 
                   key={prod._id} 
                   to={`/product/${prod._id}`}
-                  className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl overflow-hidden hover:shadow-md transition-all group flex flex-col justify-between"
+                  className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-750 rounded-3xl overflow-hidden hover:shadow-xl hover:border-gray-200 dark:hover:border-gray-700 transition-all group flex flex-col justify-between p-3 relative"
                 >
-                  <div className="relative aspect-square bg-gray-50 dark:bg-gray-750 overflow-hidden">
+                  {/* Image Container with Ribbon and Wishlist heart */}
+                  <div className="relative aspect-square bg-gray-50 dark:bg-gray-750 rounded-2xl overflow-hidden mb-3">
                     {prod.images && prod.images.length > 0 ? (
-                      <img src={`${API_BASE}${prod.images[0]}`} alt={prod.name} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform" />
+                      <img src={prod.images[0]?.startsWith('http') ? prod.images[0] : `${API_BASE}${prod.images[0]}`} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={48}/></div>
+                      <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={40}/></div>
                     )}
+
+                    {/* Ribbon Tag: Nổi bật */}
                     {prod.isFeatured && (
-                      <span className="absolute top-2 left-2 bg-yellow-500 text-white text-[9px] font-extrabold px-2 py-1 rounded-md uppercase">Nổi bật</span>
+                      <div className="absolute top-0 left-0 bg-gradient-to-r from-red-500 to-rose-600 text-white text-[9px] font-black px-2.5 py-1 rounded-br-2xl shadow-sm uppercase tracking-wider">
+                        Nổi bật
+                      </div>
                     )}
+
+                    {/* Wishlist Heart Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert('Đã thêm sản phẩm vào danh sách yêu thích!');
+                      }}
+                      className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-white/95 dark:bg-gray-855/95 border border-gray-100 dark:border-gray-700 flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-all text-gray-400 hover:text-red-500 cursor-pointer"
+                    >
+                      <Heart size={13} className="fill-transparent" />
+                    </button>
                   </div>
 
-                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                    <div className="space-y-1">
-                      <h4 className="text-xs font-bold text-gray-850 dark:text-white line-clamp-2 leading-snug">{prod.name}</h4>
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-sm font-extrabold text-primary dark:text-indigo-400">{prod.priceSale.toLocaleString()}đ</span>
-                        {prod.priceCompare > 0 && (
-                          <span className="text-[10px] text-gray-400 line-through font-medium">{prod.priceCompare.toLocaleString()}đ</span>
+                  {/* Text & Pricing Info */}
+                  <div className="flex-1 flex flex-col justify-between space-y-2.5">
+                    <div className="space-y-2">
+                      {/* Product Title */}
+                      <h4 className="text-[12px] font-bold text-gray-800 dark:text-gray-100 line-clamp-2 leading-tight text-left h-8">
+                        {prod.name}
+                      </h4>
+
+                      {/* Soft Blue Discount Badge */}
+                      {prod.priceCompare > 0 && prod.priceCompare > prod.priceSale ? (
+                        <div className="text-left">
+                          <span className="inline-block border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30 text-sky-500 dark:text-sky-400 text-[10px] font-extrabold px-2 py-0.5 rounded-lg">
+                            Giảm {Math.round((1 - prod.priceSale / prod.priceCompare) * 100)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="h-[20px]"></div>
+                      )}
+
+                      {/* Pricing Stack */}
+                      <div className="text-left space-y-0.5">
+                        {/* Compare Price */}
+                        {prod.priceCompare > 0 && prod.priceCompare > prod.priceSale ? (
+                          <p className="text-[11px] text-gray-400 line-through font-medium leading-none">
+                            {prod.priceCompare.toLocaleString()} VNĐ
+                          </p>
+                        ) : (
+                          <div className="h-[11px]"></div>
                         )}
+                        {/* Sale Price */}
+                        <p className="text-sm font-black text-cyan-500 dark:text-cyan-400 leading-none">
+                          {prod.priceSale.toLocaleString()} VNĐ
+                        </p>
                       </div>
                     </div>
 
-                    <button 
-                      onClick={(e) => handleQuickAdd(prod, e)}
-                      className="w-full py-1.5 bg-gray-50 dark:bg-gray-700 hover:bg-primary hover:text-white dark:hover:bg-primary rounded-xl text-[10px] font-bold text-gray-700 dark:text-gray-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <ShoppingBag size={12}/> Thêm vào giỏ
-                    </button>
+                    {/* Card Footer: Sold count & Quick Plus Add button */}
+                    <div className="flex justify-between items-center pt-2.5 border-t border-gray-50 dark:border-gray-700/50">
+                      <p className="text-[10px] text-gray-400 font-bold">
+                        Đã bán {prod.soldCount > 1000 ? `${(prod.soldCount / 1000).toFixed(1)}k` : prod.soldCount || 0}
+                      </p>
+                      <button 
+                        type="button"
+                        onClick={(e) => handleQuickAdd(prod, e)}
+                        className="w-7 h-7 bg-cyan-500 hover:bg-cyan-600 dark:bg-cyan-600 dark:hover:bg-cyan-700 text-white rounded-lg flex items-center justify-center shadow-sm transition-colors cursor-pointer hover:scale-105 active:scale-95"
+                      >
+                        <Plus size={13} strokeWidth={3} />
+                      </button>
+                    </div>
                   </div>
                 </Link>
               ))}

@@ -57,8 +57,13 @@ export const shopService = {
     return res.data;
   },
 
-  validateVoucher: async (payload: { code: string; orderAmount: number }) => {
+  validateVoucher: async (payload: { code: string; orderAmount: number; items?: any[] }) => {
     const res = await api.post('/checkout/validate-voucher', payload);
+    return res.data;
+  },
+
+  getLoyaltyConfig: async () => {
+    const res = await api.get('/loyalty-config');
     return res.data;
   },
 
@@ -122,6 +127,21 @@ export const shopService = {
 
   cancelOrder: async (id: string) => {
     const res = await api.post(`/orders/${id}/cancel`);
+    return res.data;
+  },
+
+  changePassword: async (payload: any) => {
+    const res = await api.post('/auth/change-password', payload);
+    return res.data;
+  },
+
+  sendOTP: async (payload: { phone: string }) => {
+    const res = await api.post('/auth/send-otp', payload);
+    return res.data;
+  },
+
+  forgotPassword: async (payload: any) => {
+    const res = await api.post('/auth/forgot-password', payload);
     return res.data;
   }
 };
