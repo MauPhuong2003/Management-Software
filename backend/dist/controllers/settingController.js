@@ -23,11 +23,18 @@ exports.getSettings = getSettings;
 const updateSettings = async (req, res) => {
     try {
         let settings = await Setting_1.default.findOne();
+        const updateData = { ...req.body };
+        if (updateData.bankInfo) {
+            const { bankName, accountNumber, accountHolder } = updateData.bankInfo;
+            if (!bankName?.trim() || !accountNumber?.trim() || !accountHolder?.trim()) {
+                updateData.bankInfo = null;
+            }
+        }
         if (settings) {
-            settings = await Setting_1.default.findOneAndUpdate({}, req.body, { new: true, runValidators: true });
+            settings = await Setting_1.default.findOneAndUpdate({}, updateData, { new: true, runValidators: true });
         }
         else {
-            settings = await Setting_1.default.create(req.body);
+            settings = await Setting_1.default.create(updateData);
         }
         res.json({ success: true, data: settings });
     }

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { settingService } from '../services/settingService';
 import { uploadService } from '../services/uploadService';
-import { Settings as SettingsIcon, Save, Shield, Image as ImageIcon, Globe, Plus, Trash2, Upload, X, Users, Edit2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Shield, Globe, Plus, Trash2, Upload, X, Users, Edit2 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000';
 
@@ -63,6 +63,66 @@ const Settings = () => {
   const [facebook, setFacebook] = useState('');
   const [logo, setLogo] = useState('');
   const [banners, setBanners] = useState<string[]>([]);
+  const [addresses, setAddresses] = useState<{ branchName: string; address: string; openingHours: string; lat?: number; lon?: number; }[]>([]);
+  const [bankName, setBankName] = useState('');
+  const [accountHolder, setAccountHolder] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+
+  // Address autocomplete suggestions states
+  const [activeAddressIdx, setActiveAddressIdx] = useState<number | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const [searchTimeout, setSearchTimeout] = useState<any>(null);
+
+  const fetchSuggestions = async (idx: number, query: string) => {
+    if (!query || query.trim().length < 3) {
+      setAddressSuggestions([]);
+      return;
+    }
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=vn&limit=8`;
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'vi,en;q=0.9',
+          'User-Agent': 'AdminStoreSettingsApp/1.0'
+        }
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setAddressSuggestions(data);
+        setActiveAddressIdx(idx);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleBranchAddressChange = (idx: number, value: string) => {
+    handleBranchUpdate(idx, 'address', value);
+
+    if (searchTimeout) clearTimeout(searchTimeout);
+
+    const timeout = setTimeout(() => {
+      fetchSuggestions(idx, value);
+    }, 550);
+    setSearchTimeout(timeout);
+  };
+
+  // Helpers for Store Branches
+  const handleAddBranch = () => {
+    setAddresses(prev => [...prev, { branchName: '', address: '', openingHours: '08:00 - 22:00', lat: undefined, lon: undefined }]);
+  };
+
+  const handleBranchUpdate = (index: number, key: string, value: any) => {
+    setAddresses(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [key]: value };
+      return updated;
+    });
+  };
+
+  const handleRemoveBranch = (index: number) => {
+    setAddresses(prev => prev.filter((_, idx) => idx !== index));
+  };
 
   // Drag and drop states
   const [isLogoDragging, setIsLogoDragging] = useState(false);
@@ -96,6 +156,10 @@ const Settings = () => {
       setFacebook(s.contact?.facebook || '');
       setLogo(s.logo || '');
       setBanners(s.banners || []);
+      setAddresses(s.addresses || []);
+      setBankName(s.bankInfo?.bankName || '');
+      setAccountHolder(s.bankInfo?.accountHolder || '');
+      setAccountNumber(s.bankInfo?.accountNumber || '');
     }
   }, [settingsData]);
 
@@ -271,7 +335,13 @@ const Settings = () => {
       storeName,
       logo,
       banners,
-      contact: { email, phone, facebook }
+      contact: { email, phone, facebook },
+      addresses,
+      bankInfo: {
+        bankName,
+        accountHolder,
+        accountNumber
+      }
     });
   };
 
@@ -560,6 +630,176 @@ const Settings = () => {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Store Branches (Chi nhánh cửa hàng) */}
+            <div className="border-t dark:border-gray-700 pt-6">
+              <div className="flex justify-between items-center mb-4 flex-wrap gap-2 text-left">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Danh sách chi nhánh (Store Branches)</label>
+                  <p className="text-xs text-gray-400 mt-0.5">Quản lý danh sách các chi nhánh của cửa hàng để khách hàng chọn khi nhận tại quầy.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddBranch}
+                  className="bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer border-0 outline-none"
+                >
+                  <Plus size={12} /> Thêm chi nhánh
+                </button>
+              </div>
+
+              {addresses.length === 0 ? (
+                <div className="border border-dashed border-gray-200 dark:border-gray-700 p-8 text-center rounded-xl bg-gray-50/50 dark:bg-gray-800/20 text-gray-400 text-xs">
+                  Chưa cấu hình chi nhánh nào.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {addresses.map((branch, idx) => (
+                    <div key={idx} className="bg-gray-50 dark:bg-gray-750/30 p-4 rounded-xl border dark:border-gray-750 space-y-3 relative group text-left transition-all hover:shadow-sm">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="space-y-2 flex-1 min-w-0">
+                          <div>
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Tên chi nhánh</label>
+                            <input
+                              type="text"
+                              value={branch.branchName || ''}
+                              placeholder="Ví dụ: Chi nhánh Quận 1"
+                              onChange={e => handleBranchUpdate(idx, 'branchName', e.target.value)}
+                              required
+                              className="w-full font-bold text-gray-850 dark:text-white bg-white dark:bg-gray-700 border border-gray-250 dark:border-gray-600 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                            />
+                          </div>
+                          <div className="relative">
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Địa chỉ</label>
+                            <input
+                              type="text"
+                              value={branch.address || ''}
+                              placeholder="Ví dụ: 123 Đường Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP. HCM"
+                              onChange={e => handleBranchAddressChange(idx, e.target.value)}
+                              onFocus={() => {
+                                if (branch.address && branch.address.trim().length >= 3) {
+                                  fetchSuggestions(idx, branch.address);
+                                }
+                              }}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  setActiveAddressIdx(null);
+                                  setAddressSuggestions([]);
+                                }, 250);
+                              }}
+                              required
+                              className="w-full text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-250 dark:border-gray-600 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                            />
+                            {activeAddressIdx === idx && addressSuggestions.length > 0 && (
+                              <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto divide-y dark:divide-gray-750 custom-scrollbar">
+                                {addressSuggestions.map((item: any, itemIdx: number) => (
+                                  <div
+                                    key={itemIdx}
+                                    onClick={() => {
+                                      handleBranchUpdate(idx, 'address', item.display_name);
+                                      if (item.lat) handleBranchUpdate(idx, 'lat', parseFloat(item.lat));
+                                      if (item.lon) handleBranchUpdate(idx, 'lon', parseFloat(item.lon));
+                                      setActiveAddressIdx(null);
+                                      setAddressSuggestions([]);
+                                    }}
+                                    className="p-2.5 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer text-left transition-colors text-[11px] text-gray-700 dark:text-gray-200 leading-normal"
+                                  >
+                                    {item.display_name}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Vĩ độ (Latitude)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                value={branch.lat !== undefined ? branch.lat : ''}
+                                placeholder="Ví dụ: 10.776"
+                                onChange={e => handleBranchUpdate(idx, 'lat', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                className="w-full text-gray-750 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-250 dark:border-gray-600 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none text-xs font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Kinh độ (Longitude)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                value={branch.lon !== undefined ? branch.lon : ''}
+                                placeholder="Ví dụ: 106.701"
+                                onChange={e => handleBranchUpdate(idx, 'lon', e.target.value ? parseFloat(e.target.value) : undefined)}
+                                className="w-full text-gray-750 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-250 dark:border-gray-600 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 font-bold uppercase mb-0.5">Giờ mở cửa</label>
+                            <input
+                              type="text"
+                              value={branch.openingHours || ''}
+                              placeholder="Ví dụ: 08:00 - 22:00"
+                              onChange={e => handleBranchUpdate(idx, 'openingHours', e.target.value)}
+                              className="w-full text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-250 dark:border-gray-600 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBranch(idx)}
+                          className="text-gray-400 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors cursor-pointer border-0 bg-transparent shrink-0"
+                          title="Xóa chi nhánh"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Bank Transfer Configuration */}
+            <div className="border-t dark:border-gray-700 pt-6">
+              <div className="mb-4 text-left">
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Thông tin chuyển khoản ngân hàng (Bank Transfer Details)</label>
+                <p className="text-xs text-gray-400 mt-0.5">Cấu hình tài khoản ngân hàng của cửa hàng để khách hàng chuyển khoản khi mua sắm.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-left">
+                  <label className="block text-xs text-gray-400 mb-1">Tên ngân hàng (e.g. Vietcombank, MBBank)</label>
+                  <input
+                    type="text"
+                    value={bankName}
+                    onChange={e => setBankName(e.target.value)}
+                    placeholder="Ví dụ: Vietcombank"
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs"
+                  />
+                </div>
+                <div className="text-left">
+                  <label className="block text-xs text-gray-400 mb-1">Số tài khoản</label>
+                  <input
+                    type="text"
+                    value={accountNumber}
+                    onChange={e => setAccountNumber(e.target.value)}
+                    placeholder="Ví dụ: 1023456789"
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs font-mono"
+                  />
+                </div>
+                <div className="text-left">
+                  <label className="block text-xs text-gray-400 mb-1">Họ tên chủ tài khoản</label>
+                  <input
+                    type="text"
+                    value={accountHolder}
+                    onChange={e => setAccountHolder(e.target.value)}
+                    placeholder="Ví dụ: NGUYEN VAN A"
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-xs uppercase"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

@@ -35,6 +35,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const customerAddressSchema = new mongoose_1.Schema({
+    label: { type: String, default: '' },
+    addressType: { type: String, default: 'Sau sáp nhập' },
     name: { type: String, required: true },
     phone: { type: String, required: true },
     province: { type: String, required: true },
@@ -55,6 +57,12 @@ const customerSchema = new mongoose_1.Schema({
     email: { type: String, unique: true, sparse: true },
     password: { type: String },
     avatar: { type: String, default: '' },
-    addresses: [customerAddressSchema]
+    otpCode: { type: String },
+    otpExpireTime: { type: Date },
+    addresses: [customerAddressSchema],
+    spinsRemaining: { type: Number, default: 0 },
+    totalSpins: { type: Number, default: 0 },
+    lastSpinAt: { type: Date },
+    vouchers: [{ type: mongoose_1.default.Schema.Types.ObjectId, ref: 'Promotion' }]
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Customer', customerSchema);

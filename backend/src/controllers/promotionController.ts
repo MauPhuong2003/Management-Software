@@ -10,7 +10,13 @@ export const getPromotions = async (req: Request, res: Response): Promise<void> 
 
 export const createPromotion = async (req: Request, res: Response): Promise<void> => {
     try {
-        const promotion = await Promotion.create(req.body);
+        const payload = { ...req.body };
+        if (!payload.code || !payload.code.trim()) {
+            payload.code = 'VC' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        } else {
+            payload.code = payload.code.trim().toUpperCase();
+        }
+        const promotion = await Promotion.create(payload);
         res.status(201).json({ success: true, data: promotion });
     } catch (e: any) { res.status(500).json({ success: false, message: e.message }); }
 };

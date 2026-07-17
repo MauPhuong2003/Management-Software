@@ -135,6 +135,30 @@ export const shopService = {
     return res.data;
   },
 
+  requestReturn: async (id: string, payload: { reason: string; images: string[] }) => {
+    const res = await api.post(`/orders/${id}/return`, payload);
+    return res.data;
+  },
+
+  submitPaymentProof: async (id: string, payload: { paymentProof: string }) => {
+    const res = await api.put(`/orders/${id}/payment-proof`, payload);
+    return res.data;
+  },
+
+  uploadProofImage: async (file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const token = localStorage.getItem('shop_token');
+    const axios = (await import('axios')).default;
+    const res = await axios.post('http://localhost:5000/api/admin/upload/customer', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return res.data;
+  },
+
   changePassword: async (payload: any) => {
     const res = await api.post('/auth/change-password', payload);
     return res.data;
@@ -148,6 +172,24 @@ export const shopService = {
   forgotPassword: async (payload: any) => {
     const res = await api.post('/auth/forgot-password', payload);
     return res.data;
-  }
+  },
+
+  // MiniGame
+  getActiveMiniGame: async () => {
+    const res = await api.get('/minigame/active');
+    return res.data;
+  },
+  exchangePointsForSpins: async (payload: { quantity: number }) => {
+    const res = await api.post('/minigame/exchange-points', payload);
+    return res.data;
+  },
+  spin: async () => {
+    const res = await api.post('/minigame/spin');
+    return res.data;
+  },
+  getSpinHistory: async (params?: { page?: number; limit?: number }) => {
+    const res = await api.get('/minigame/history', { params });
+    return res.data;
+  },
 };
 export default shopService;

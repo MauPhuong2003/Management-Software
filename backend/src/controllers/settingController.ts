@@ -18,10 +18,19 @@ export const getSettings = async (req: Request, res: Response): Promise<void> =>
 export const updateSettings = async (req: Request, res: Response): Promise<void> => {
     try {
         let settings = await Setting.findOne();
+        
+        const updateData = { ...req.body };
+        if (updateData.bankInfo) {
+            const { bankName, accountNumber, accountHolder } = updateData.bankInfo;
+            if (!bankName?.trim() || !accountNumber?.trim() || !accountHolder?.trim()) {
+                updateData.bankInfo = null;
+            }
+        }
+
         if (settings) {
-            settings = await Setting.findOneAndUpdate({}, req.body, { new: true, runValidators: true });
+            settings = await Setting.findOneAndUpdate({}, updateData, { new: true, runValidators: true });
         } else {
-            settings = await Setting.create(req.body);
+            settings = await Setting.create(updateData);
         }
         res.json({ success: true, data: settings });
     } catch (error: any) {

@@ -18,7 +18,8 @@ import {
   XCircle, 
   RefreshCw, 
   Lock,
-  Copy
+  Copy,
+  Upload
 } from 'lucide-react';
 
 const ORDER_STATUSES: Record<string, { label: string; color: string; icon: any }> = {
@@ -27,6 +28,17 @@ const ORDER_STATUSES: Record<string, { label: string; color: string; icon: any }
   shipping:  { label: 'Đang giao hàng',  color: 'text-indigo-600 bg-indigo-50 border-indigo-100', icon: <Truck size={12}/> },
   delivered: { label: 'Đã giao hàng',    color: 'text-green-600 bg-green-50 border-green-100',    icon: <Check size={12}/> },
   cancelled: { label: 'Đã hủy',          color: 'text-red-600 bg-red-50 border-red-100',          icon: <XCircle size={12}/> },
+};
+
+const getOrderStatusInfo = (order: any) => {
+  if (order.orderStatus === 'pending' && order.paymentMethod === 'bank_transfer' && order.paymentStatus === 'pending') {
+    return {
+      label: 'Chờ thanh toán',
+      color: 'text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30',
+      icon: <Clock size={12}/>
+    };
+  }
+  return ORDER_STATUSES[order.orderStatus] || { label: order.orderStatus, color: 'text-gray-500 bg-gray-50 border-gray-100', icon: <Clock size={12}/> };
 };
 
 const TIER_COLORS: Record<string, string> = {
@@ -330,6 +342,121 @@ export const Account = () => {
     }
   };
 
+  // Payment proof states and handlers
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [isSubmittingProof, setIsSubmittingProof] = useState(false);
+
+  const handleUploadPaymentProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    setProofFile(file);
+    setProofPreview(URL.createObjectURL(file));
+  };
+
+  const handleSubmitPaymentProof = async () => {
+    if (!proofFile || !selectedOrderDetail) return;
+    setIsSubmittingProof(true);
+    setIsUploadingProof(true);
+    try {
+      const uploadRes = await shopService.uploadProofImage(proofFile);
+      const fileUrl = uploadRes.fileUrl || uploadRes.data?.url;
+      if (!fileUrl) {
+        throw new Error('Không lấy được link ảnh tải lên');
+      }
+
+      const submitRes = await shopService.submitPaymentProof(selectedOrderDetail._id, { paymentProof: fileUrl });
+      if (submitRes.success) {
+        alert('Gửi minh chứng chuyển khoản thành công!');
+        setSelectedOrderDetail((prev: any) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            paymentProof: fileUrl,
+            paymentProofSubmittedAt: new Date()
+          };
+        });
+        refetchOrders();
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi gửi minh chứng.');
+    } finally {
+      setIsSubmittingProof(false);
+      setIsUploadingProof(false);
+      setProofFile(null);
+      setProofPreview(null);
+    }
+  };
+
+  // Return request states and handlers
+  const [isRequestingReturn, setIsRequestingReturn] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [returnImages, setReturnImages] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false);
+
+  const handleUploadImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setIsUploading(true);
+    const filesArray = Array.from(e.target.files);
+    
+    try {
+      const uploadPromises = filesArray.map(async (file) => {
+        try {
+          const res = await shopService.uploadProofImage(file);
+          return res.fileUrl || res.data?.url || null;
+        } catch (singleErr) {
+          console.error('Error uploading single file:', singleErr);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(uploadPromises);
+      const successfulUrls = results.filter((url): url is string => typeof url === 'string');
+
+      if (successfulUrls.length > 0) {
+        setReturnImages((prev) => [...prev, ...successfulUrls]);
+      }
+
+      const failedCount = filesArray.length - successfulUrls.length;
+      if (failedCount > 0) {
+        alert(`Tải lên hoàn tất. Có ${successfulUrls.length} ảnh thành công và ${failedCount} ảnh bị lỗi.`);
+      }
+    } catch (err: any) {
+      alert('Đã xảy ra lỗi trong quá trình tải ảnh lên.');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveImage = (idx: number) => {
+    setReturnImages((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSubmitReturn = async (id: string) => {
+    if (!returnReason.trim()) {
+      alert('Vui lòng điền lý do hoàn trả cụ thể!');
+      return;
+    }
+    setIsSubmittingReturn(true);
+    try {
+      await shopService.requestReturn(id, { reason: returnReason, images: returnImages });
+      alert('Gửi yêu cầu hoàn hàng thành công!');
+      setIsRequestingReturn(false);
+      setReturnReason('');
+      setReturnImages([]);
+      setSelectedOrderDetail(null);
+      queryClient.invalidateQueries({ queryKey: ['shop-orders'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Không thể gửi yêu cầu hoàn trả');
+    } finally {
+      setIsSubmittingReturn(false);
+    }
+  };
+
   if (!customer) return null;
 
   const TABS = [
@@ -472,7 +599,7 @@ export const Account = () => {
                     <div key={item.label} className="space-y-0.5 text-left">
                       <p className="text-[10px] font-extrabold text-gray-400 uppercase">{item.label}</p>
                       {item.isLoyalty ? (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="text-xs font-bold text-gray-800 dark:text-white">{item.value}</p>
                           <button 
                             type="button"
@@ -481,6 +608,12 @@ export const Account = () => {
                           >
                             (Chi tiết)
                           </button>
+                          <Link 
+                            to="/lucky-wheel"
+                            className="text-[10px] font-extrabold text-indigo-650 dark:text-indigo-400 hover:underline cursor-pointer ml-1 flex items-center gap-0.5"
+                          >
+                            🎡 Vòng quay may mắn
+                          </Link>
                         </div>
                       ) : (
                         <p className="text-xs font-bold text-gray-800 dark:text-white">{item.value}</p>
@@ -770,7 +903,7 @@ export const Account = () => {
                   <Link to="/catalog" className="text-primary text-xs font-extrabold hover:underline">Khám phá sản phẩm ngay →</Link>
                 </div>
               ) : orders.map((order: any) => {
-                const statusInfo = ORDER_STATUSES[order.orderStatus] || { label: order.orderStatus, color: 'text-gray-500 bg-gray-50 border-gray-100', icon: <Clock size={12}/> };
+                const statusInfo = getOrderStatusInfo(order);
                 
                 return (
                   <div key={order._id} className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl p-5 space-y-4">
@@ -781,11 +914,27 @@ export const Account = () => {
                         <p className="text-[10px] text-gray-400 font-semibold">Mã đơn hàng</p>
                         <p className="font-mono text-xs font-extrabold text-primary">{order.orderCode}</p>
                       </div>
-                      <div className="text-right space-y-0.5">
+                       <div className="text-right space-y-1">
                         <p className="text-[10px] text-gray-400 font-semibold">{new Date(order.createdAt).toLocaleDateString('vi-VN')}</p>
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold border px-2.5 py-1 rounded-full ${statusInfo.color}`}>
-                          {statusInfo.icon} {statusInfo.label}
-                        </span>
+                        <div className="flex flex-col items-end gap-1.5">
+                          <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold border px-2.5 py-1 rounded-full ${statusInfo.color}`}>
+                            {statusInfo.icon} {statusInfo.label}
+                          </span>
+                          {order.returnRequest && order.returnRequest.reason && (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-extrabold border px-2.5 py-1 rounded-full ${
+                              order.returnRequest.status === 'approved'
+                                ? 'text-green-600 bg-green-50 border-green-100 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30'
+                                : order.returnRequest.status === 'rejected'
+                                ? 'text-red-600 bg-red-50 border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30'
+                                : 'text-amber-600 bg-amber-50 border-amber-100 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30 animate-pulse'
+                            }`}>
+                              🔄 {
+                                order.returnRequest.status === 'approved' ? 'Đã trả hàng/hoàn tiền' :
+                                order.returnRequest.status === 'rejected' ? 'Từ chối trả hàng' : 'Đã yêu cầu Trả hàng/Hoàn tiền'
+                              }
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -1024,6 +1173,32 @@ export const Account = () => {
             {/* Scrollable Content */}
             <div className="p-5 overflow-y-auto space-y-5 custom-scrollbar text-xs">
               
+              {/* Return status banner inside detail modal */}
+              {selectedOrderDetail.returnRequest && selectedOrderDetail.returnRequest.reason && (
+                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
+                  selectedOrderDetail.returnRequest.status === 'approved'
+                    ? 'bg-green-50 text-green-800 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30'
+                    : selectedOrderDetail.returnRequest.status === 'rejected'
+                    ? 'bg-red-50 text-red-800 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30'
+                    : 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
+                }`}>
+                  <div className="text-left space-y-0.5">
+                    <p className="font-extrabold text-xs">
+                      {selectedOrderDetail.returnRequest.status === 'approved' ? '✓ ĐÃ HOÀN TRẢ HÀNG & HOÀN TIỀN THÀNH CÔNG' : 
+                       selectedOrderDetail.returnRequest.status === 'rejected' ? '✗ TỪ CHỐI YÊU CẦU HOÀN TRẢ HÀNG' : '🔄 ĐÃ GỬI YÊU CẦU TRẢ HÀNG / HOÀN TIỀN'}
+                    </p>
+                    <p className="text-[10px] opacity-90">Lý do: {selectedOrderDetail.returnRequest.reason}</p>
+                    {selectedOrderDetail.returnRequest.adminComment && (
+                      <p className="text-[10px] font-bold mt-1">Phản hồi của Admin: "{selectedOrderDetail.returnRequest.adminComment}"</p>
+                    )}
+                  </div>
+                  <span className="text-base shrink-0">
+                    {selectedOrderDetail.returnRequest.status === 'approved' ? '💰' : 
+                     selectedOrderDetail.returnRequest.status === 'rejected' ? '⛔' : '⏳'}
+                  </span>
+                </div>
+              )}
+
               {/* Stepper progress */}
               <div className="grid grid-cols-4 gap-1 py-2 border-b dark:border-gray-700/50 pb-4">
                 {['pending', 'confirmed', 'shipping', 'delivered'].map((step, idx) => {
@@ -1054,7 +1229,7 @@ export const Account = () => {
                         {circleContent}
                       </div>
                       <p className={`text-[9px] font-bold text-center leading-tight ${isCurrent ? 'text-primary' : 'text-gray-400'}`}>
-                        {stepInfo.label}
+                        {step === 'pending' && selectedOrderDetail.paymentMethod === 'bank_transfer' && selectedOrderDetail.paymentStatus === 'pending' ? 'Chờ thanh toán' : stepInfo.label}
                       </p>
                     </div>
                   );
@@ -1070,7 +1245,7 @@ export const Account = () => {
                     <span className="text-gray-400">Hình thức thanh toán:</span>
                     <span className="font-bold text-gray-700 dark:text-gray-200">
                       {selectedOrderDetail.paymentMethod === 'cash' ? '💵 Tiền mặt (COD)' : 
-                       selectedOrderDetail.paymentMethod === 'transfer' ? '💳 Chuyển khoản ngân hàng' : 
+                       (selectedOrderDetail.paymentMethod === 'transfer' || selectedOrderDetail.paymentMethod === 'bank_transfer') ? '💳 Chuyển khoản ngân hàng' : 
                        selectedOrderDetail.paymentMethod || 'Tiền mặt (COD)'}
                     </span>
                   </div>
@@ -1129,6 +1304,69 @@ export const Account = () => {
                 })()}
               </div>
 
+              {/* Payment Proof Section */}
+              {(selectedOrderDetail.paymentMethod === 'bank_transfer' || selectedOrderDetail.paymentMethod === 'transfer') && 
+               selectedOrderDetail.paymentStatus === 'pending' && (
+                <div className="bg-indigo-50/20 dark:bg-gray-750/30 border border-indigo-100/50 dark:border-gray-750 p-4 rounded-2xl text-left space-y-3">
+                  <h5 className="font-bold text-gray-800 dark:text-white text-xs uppercase tracking-wider flex items-center gap-1.5 border-b dark:border-gray-700 pb-2">
+                    💸 Xác nhận thanh toán Chuyển khoản
+                  </h5>
+                  
+                  {selectedOrderDetail.paymentProof ? (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-150 rounded-xl text-emerald-800 dark:text-emerald-400 text-xs">
+                        ✓ Bạn đã gửi minh chứng giao dịch thành công. Vui lòng chờ cửa hàng đối soát và duyệt đơn hàng.
+                      </div>
+                      <div className="w-32 h-32 rounded-xl overflow-hidden border dark:border-gray-750 bg-gray-50 dark:bg-gray-800">
+                        <img 
+                          src={selectedOrderDetail.paymentProof.startsWith('http') ? selectedOrderDetail.paymentProof : `${API_BASE}${selectedOrderDetail.paymentProof}`} 
+                          alt="Minh chứng chuyển khoản" 
+                          className="w-full h-full object-cover cursor-pointer"
+                          onClick={() => window.open(selectedOrderDetail.paymentProof.startsWith('http') ? selectedOrderDetail.paymentProof : `${API_BASE}${selectedOrderDetail.paymentProof}`, '_blank')}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-gray-400">Nếu bạn đã chuyển khoản thành công, vui lòng tải ảnh biên lai giao dịch/ảnh chuyển tiền thành công lên đây để được duyệt đơn hàng nhanh nhất.</p>
+                      
+                      <div className="flex items-center gap-3">
+                        <label className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-primary dark:bg-indigo-950/40 dark:text-indigo-400 font-bold rounded-xl text-xs cursor-pointer border border-indigo-150 transition-colors flex items-center gap-1.5">
+                          <Upload size={12}/> {isUploadingProof ? 'Đang tải ảnh...' : 'Chọn ảnh biên lai'}
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleUploadPaymentProof} 
+                            disabled={isUploadingProof}
+                            className="hidden" 
+                          />
+                        </label>
+                        {proofFile && (
+                          <span className="text-[11px] text-gray-500 font-medium truncate max-w-[200px]">
+                            {proofFile.name}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {proofPreview && (
+                        <div className="flex items-end gap-3 mt-2">
+                          <div className="w-20 h-20 rounded-xl overflow-hidden border dark:border-gray-750 bg-gray-50 dark:bg-gray-800">
+                            <img src={proofPreview} alt="Preview" className="w-full h-full object-cover" />
+                          </div>
+                          <button
+                            onClick={handleSubmitPaymentProof}
+                            disabled={isSubmittingProof}
+                            className="px-4 py-2 bg-primary hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-sm transition-colors border-0 cursor-pointer disabled:opacity-50"
+                          >
+                            {isSubmittingProof ? 'Đang gửi...' : 'Gửi xác nhận'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Items List */}
               <div className="space-y-3">
                 <h5 className="font-bold text-gray-800 dark:text-gray-200 border-b dark:border-gray-700 pb-1.5">Sản phẩm đã chọn</h5>
@@ -1144,13 +1382,136 @@ export const Account = () => {
                       </div>
                       <div className="flex-1 min-w-0 text-left">
                         <p className="font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{item.product?.name || item.productName}</p>
-                        <p className="text-[10px] text-gray-450 mt-0.5">x{item.qty} · {item.price?.toLocaleString()}đ</p>
+                        <p className="text-[10px] text-gray-450 mt-0.5">
+                          x{item.qty} · {item.isGift ? <span className="text-emerald-600 dark:text-emerald-400 font-bold">0đ</span> : `${item.price?.toLocaleString()}đ`}
+                        </p>
+                        {item.isGift && (
+                          <span className="text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                            🎁 Sản phẩm này được tặng kèm
+                          </span>
+                        )}
                       </div>
-                      <span className="font-extrabold text-gray-750 dark:text-gray-200 shrink-0">{(item.price * item.qty).toLocaleString()}đ</span>
+                      <span className={`font-extrabold shrink-0 ${item.isGift ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-750 dark:text-gray-200'}`}>
+                        {item.isGift ? '0đ' : `${(item.price * item.qty).toLocaleString()}đ`}
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
+
+              {/* Return / Refund Section */}
+              {selectedOrderDetail.orderStatus === 'delivered' && (
+                <div className="border-t dark:border-gray-700 pt-4 mt-4 text-left">
+                  <h5 className="font-bold text-gray-800 dark:text-gray-200 mb-2 text-sm">Thông tin Hoàn trả</h5>
+                  
+                  {selectedOrderDetail.returnRequest && selectedOrderDetail.returnRequest.reason ? (
+                    <div className={`p-4 rounded-2xl border text-xs ${
+                      selectedOrderDetail.returnRequest.status === 'approved'
+                        ? 'bg-green-50/50 text-green-800 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30'
+                        : selectedOrderDetail.returnRequest.status === 'rejected'
+                        ? 'bg-red-50/50 text-red-800 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30'
+                        : 'bg-amber-50/50 text-amber-800 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold">Trạng thái yêu cầu:</span>
+                        <span className="font-black px-2 py-0.5 rounded-lg text-[10px] uppercase bg-white dark:bg-gray-800 shadow-sm">
+                          {selectedOrderDetail.returnRequest.status === 'approved' ? 'Đã đồng ý' : 
+                           selectedOrderDetail.returnRequest.status === 'rejected' ? 'Đã từ chối' : 'Chờ xác nhận'}
+                        </span>
+                      </div>
+                      
+                      <p className="mt-1"><span className="font-semibold">Lý do hoàn trả:</span> {selectedOrderDetail.returnRequest.reason}</p>
+                      
+                      {selectedOrderDetail.returnRequest.images?.length > 0 && (
+                        <div className="mt-2.5">
+                          <p className="font-semibold mb-1">Hình ảnh minh chứng:</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {selectedOrderDetail.returnRequest.images.map((img: string, i: number) => (
+                              <a key={i} href={img.startsWith('http') ? img : `${API_BASE}${img}`} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-lg overflow-hidden border dark:border-gray-700 hover:opacity-80 transition-opacity">
+                                <img src={img.startsWith('http') ? img : `${API_BASE}${img}`} alt="" className="w-full h-full object-cover" />
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {selectedOrderDetail.returnRequest.adminComment && (
+                        <div className="mt-3 pt-2.5 border-t border-dashed border-gray-200 dark:border-gray-750">
+                          <p className="font-semibold text-gray-900 dark:text-white">Phản hồi từ Admin:</p>
+                          <p className="italic text-gray-700 dark:text-gray-300 mt-0.5">{selectedOrderDetail.returnRequest.adminComment}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : !isRequestingReturn ? (
+                    <button
+                      onClick={() => setIsRequestingReturn(true)}
+                      className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 hover:bg-amber-100 px-4 py-2.5 rounded-xl cursor-pointer transition-all w-full flex items-center justify-center gap-1"
+                    >
+                      🔄 Yêu cầu trả hàng / Hoàn tiền
+                    </button>
+                  ) : (
+                    <div className="p-4 border dark:border-gray-700 rounded-2xl space-y-3 bg-gray-50/50 dark:bg-gray-900/10">
+                      <div>
+                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-350 mb-1">Lý do hoàn trả cụ thể *</label>
+                        <textarea
+                          rows={3}
+                          value={returnReason}
+                          onChange={(e) => setReturnReason(e.target.value)}
+                          placeholder="Mô tả chi tiết lý do bạn muốn hoàn trả sản phẩm (ví dụ: sản phẩm bị vỡ, sai mẫu mã, lỗi kỹ thuật...)"
+                          className="w-full border dark:border-gray-700 rounded-xl px-3 py-2 text-xs bg-white dark:bg-gray-800 outline-none focus:border-primary text-gray-800 dark:text-gray-150 resize-none"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-xs font-bold text-gray-600 dark:text-gray-350 mb-1">Hình ảnh chứng minh *</label>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleUploadImages}
+                          className="text-xs text-gray-650 dark:text-gray-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-primary hover:file:bg-indigo-100 cursor-pointer file:cursor-pointer"
+                        />
+                        {isUploading && <p className="text-[10px] text-primary font-medium mt-1">Đang tải ảnh lên...</p>}
+                        
+                        {returnImages.length > 0 && (
+                          <div className="flex gap-2 flex-wrap mt-2">
+                            {returnImages.map((img, i) => (
+                              <div key={i} className="relative w-12 h-12 rounded-lg overflow-hidden border dark:border-gray-700 group">
+                                <img src={img.startsWith('http') ? img : `${API_BASE}${img}`} alt="" className="w-full h-full object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveImage(i)}
+                                  className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px] font-bold"
+                                >
+                                  Xóa
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitReturn(selectedOrderDetail._id)}
+                          disabled={isSubmittingReturn || isUploading}
+                          className="flex-1 bg-primary text-white text-xs font-bold py-2 rounded-xl hover:bg-primary-dark transition-colors disabled:opacity-60 cursor-pointer"
+                        >
+                          {isSubmittingReturn ? 'Đang gửi...' : 'Gửi yêu cầu'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setIsRequestingReturn(false); setReturnReason(''); setReturnImages([]); }}
+                          className="flex-1 border dark:border-gray-600 text-gray-750 dark:text-gray-300 text-xs font-bold py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
             </div>
           </div>

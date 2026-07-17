@@ -27,6 +27,10 @@ export interface ICustomer extends Document {
     otpCode?: string;
     otpExpireTime?: Date;
     addresses?: ICustomerAddress[];
+    spinsRemaining: number;
+    totalSpins: number;
+    lastSpinAt?: Date;
+    vouchers: mongoose.Types.ObjectId[];
 }
 
 const customerAddressSchema = new Schema<ICustomerAddress>({
@@ -55,7 +59,11 @@ const customerSchema = new Schema<ICustomer>({
     avatar: { type: String, default: '' },
     otpCode: { type: String },
     otpExpireTime: { type: Date },
-    addresses: [customerAddressSchema]
+    addresses: [customerAddressSchema],
+    spinsRemaining: { type: Number, default: 0 },
+    totalSpins: { type: Number, default: 0 },
+    lastSpinAt: { type: Date },
+    vouchers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Promotion' }]
 }, { timestamps: true });
 
 export default mongoose.model<ICustomer>('Customer', customerSchema);

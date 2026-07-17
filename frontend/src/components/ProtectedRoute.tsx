@@ -17,7 +17,8 @@ import {
   X, 
   Megaphone, 
   ChevronDown, 
-  ChevronRight 
+  ChevronRight,
+  Gift
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -50,7 +51,8 @@ const MENU_ITEMS = [
     module: 'promotions',
     children: [
       { path: '/promotions', name: 'Khuyến mãi', module: 'promotions' },
-      { path: '/flash-sales', name: 'Flash Sale', module: 'promotions' }
+      { path: '/flash-sales', name: 'Flash Sale', module: 'promotions' },
+      { path: '/minigame', name: 'Vòng Quay May Mắn', module: 'promotions' }
     ]
   },
   { 
@@ -110,6 +112,7 @@ const ProtectedRoute = () => {
   else if (currentPath.startsWith('/loyalty')) isAllowed = hasPermission('loyalty', 'read');
   else if (currentPath.startsWith('/promotions')) isAllowed = hasPermission('promotions', 'read');
   else if (currentPath.startsWith('/flash-sales')) isAllowed = hasPermission('promotions', 'read');
+  else if (currentPath.startsWith('/minigame')) isAllowed = hasPermission('promotions', 'read');
   else if (currentPath.startsWith('/settings')) isAllowed = hasPermission('settings', 'read');
 
   if (!isAllowed) {

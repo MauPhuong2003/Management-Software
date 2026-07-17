@@ -41,7 +41,9 @@ const orderSchema = new mongoose_1.Schema({
             product: { type: mongoose_1.default.Schema.Types.ObjectId, ref: 'Product' },
             variantSku: { type: String, default: null },
             qty: { type: Number, required: true },
-            price: { type: Number, required: true }
+            price: { type: Number, required: true, min: 0 },
+            isGift: { type: Boolean, default: false },
+            giftNote: { type: String, default: '' }
         }],
     totalAmount: { type: Number, required: true },
     discountAmount: { type: Number, default: 0 },
@@ -53,6 +55,20 @@ const orderSchema = new mongoose_1.Schema({
     note: { type: String, default: '' },
     loyaltyAwarded: { type: Boolean, default: false },
     loyaltyPointsUsed: { type: Number, default: 0 },
-    loyaltyDiscount: { type: Number, default: 0 }
+    loyaltyDiscount: { type: Number, default: 0 },
+    deliveryType: { type: String, enum: ['shipping', 'pickup'], default: 'shipping' },
+    pickupBranch: { type: String, default: null },
+    paymentProof: { type: String, default: null },
+    paymentProofSubmittedAt: { type: Date, default: null },
+    returnRequest: {
+        type: {
+            reason: { type: String },
+            images: [{ type: String }],
+            status: { type: String, enum: ['pending', 'approved', 'rejected'] },
+            adminComment: { type: String, default: '' },
+            createdAt: { type: Date }
+        },
+        default: undefined
+    }
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Order', orderSchema);

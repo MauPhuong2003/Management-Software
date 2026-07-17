@@ -35,6 +35,8 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import loyaltyRoutes from './routes/loyaltyRoutes';
 import flashSaleRoutes from './routes/flashSaleRoutes';
 import shopRoutes from './routes/shopRoutes';
+import miniGameRoutes from './routes/miniGameRoutes';
+import giftRoutes from './routes/giftRoutes';
 
 // Database connection
 connectDB();
@@ -53,6 +55,8 @@ app.use('/api/admin/upload', uploadRoutes);
 app.use('/api/admin/dashboard', dashboardRoutes);
 app.use('/api/admin/loyalty', loyaltyRoutes);
 app.use('/api/admin/flash-sales', flashSaleRoutes);
+app.use('/api/admin/minigame', miniGameRoutes);
+app.use('/api/admin/gifts', giftRoutes);
 app.use('/api/shop', shopRoutes);
 
 app.get('/', (req: Request, res: Response) => {

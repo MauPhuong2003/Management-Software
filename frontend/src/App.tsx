@@ -12,6 +12,7 @@ import Shipping from './pages/Shipping';
 import Promotions from './pages/Promotions';
 import LoyaltySettings from './pages/LoyaltySettings';
 import FlashSales from './pages/FlashSales';
+import MiniGame from './pages/MiniGame';
 import ProtectedRoute from './components/ProtectedRoute';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -44,6 +45,7 @@ function App() {
             <Route path="/promotions" element={<Promotions />} />
             <Route path="/loyalty" element={<LoyaltySettings />} />
             <Route path="/flash-sales" element={<FlashSales />} />
+            <Route path="/minigame" element={<MiniGame />} />
           </Route>
           
           <Route path="*" element={<Navigate to="/" replace />} />

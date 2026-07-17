@@ -84,13 +84,25 @@ export const ProductDetail = () => {
     (p: any) => p.product?._id === product?._id && p.active
   );
 
-  const displayPrice = flashSaleItem
+  const flashSaleRemaining = flashSaleItem
+    ? Math.max(0, (flashSaleItem.limitQty || 0) - (flashSaleItem.soldQty || 0))
+    : 0;
+
+  const isFlashSaleRemaining = flashSaleItem && flashSaleRemaining > 0;
+
+  const displayPrice = isFlashSaleRemaining
     ? Math.max(0, product.priceSale - (product.priceSale * (flashSaleItem.discountPercent / 100)))
     : (selectedVariant?.price ?? product.priceSale);
 
-  const displayStock = flashSaleItem
-    ? Math.max(0, flashSaleItem.limitQty - flashSaleItem.soldQty)
-    : (selectedVariant?.stock ?? product.variants.reduce((sum: number, v: any) => sum + v.stock, 0));
+  const totalVariantStock = product?.variants && product.variants.length > 0
+    ? product.variants.reduce((sum: number, v: any) => sum + (v.stock || 0), 0)
+    : 0;
+
+  const displayStock = selectedVariant
+    ? selectedVariant.stock
+    : totalVariantStock > 0
+      ? totalVariantStock
+      : (product?.stock ?? 999);
 
   // Get unique attribute keys and values from all variants
   const attrKeys = product.variants && product.variants.length > 0
@@ -231,17 +243,29 @@ export const ProductDetail = () => {
           
           {/* Flash Sale Banner */}
           {flashSaleItem && (
-            <div className="bg-red-500 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-sm animate-pulse">
+            <div className={`px-4 py-3 rounded-2xl flex items-center justify-between shadow-sm ${
+              isFlashSaleRemaining
+                ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white animate-pulse'
+                : 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50'
+            }`}>
               <div className="flex items-center gap-2">
-                <Zap size={16} className="fill-current text-yellow-300" />
+                <Zap size={16} className={isFlashSaleRemaining ? 'fill-current text-yellow-300' : 'text-amber-500'} />
                 <div>
-                  <p className="text-xs font-black uppercase tracking-wider">Đang Flash Sale!</p>
-                  <p className="text-[10px] opacity-90">Giảm ngay {flashSaleItem.discountPercent}%</p>
+                  <p className="text-xs font-black uppercase tracking-wider">
+                    {isFlashSaleRemaining ? 'Đang Flash Sale!' : '⚡ Đã hết suất Flash Sale'}
+                  </p>
+                  <p className="text-[10px] opacity-90">
+                    {isFlashSaleRemaining ? `Giảm ngay ${flashSaleItem.discountPercent}%` : 'Đã hết lượt giá ưu đãi - Chuyển sang bán theo giá gốc'}
+                  </p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-[9px] uppercase opacity-75 font-bold">Số lượng có hạn</p>
-                <p className="text-xs font-mono font-black">{displayStock} sản phẩm còn lại</p>
+                <p className="text-[9px] uppercase opacity-75 font-bold">
+                  {isFlashSaleRemaining ? 'Suất sale còn lại' : 'Tồn kho khả dụng'}
+                </p>
+                <p className="text-xs font-mono font-black">
+                  {isFlashSaleRemaining ? `${flashSaleRemaining} / ${flashSaleItem.limitQty}` : `${displayStock} sản phẩm`}
+                </p>
               </div>
             </div>
           )}

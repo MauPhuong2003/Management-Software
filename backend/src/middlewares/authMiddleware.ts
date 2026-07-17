@@ -80,3 +80,20 @@ export const protectCustomer = async (req: CustomerAuthRequest, res: Response, n
         res.status(401).json({ success: false, message: 'Không tìm thấy token đăng nhập' });
     }
 };
+
+export const optionalProtectCustomer = async (req: CustomerAuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+            token = req.headers.authorization.split(' ')[1];
+            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'secret') as any;
+            const customer = await Customer.findById(decoded.id);
+            if (customer) {
+                req.customer = customer;
+            }
+        } catch (error) {
+            // Ignore jwt verification errors for optional auth
+        }
+    }
+    next();
+};

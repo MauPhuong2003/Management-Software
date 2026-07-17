@@ -25,9 +25,17 @@ import {
     shopChangePassword,
     shopSendOTP,
     getShopLoyaltyConfig,
-    getShopLoyaltyHistory
+    getShopLoyaltyHistory,
+    requestShopOrderReturn,
+    submitShopOrderPaymentProof
 } from '../controllers/shopController';
-import { protectCustomer } from '../middlewares/authMiddleware';
+import { protectCustomer, optionalProtectCustomer } from '../middlewares/authMiddleware';
+import {
+    getActiveMiniGame,
+    exchangePointsForSpins,
+    spinWheel,
+    getCustomerSpinHistory
+} from '../controllers/miniGameController';
 
 const router = express.Router();
 
@@ -39,7 +47,7 @@ router.get('/loyalty-config', getShopLoyaltyConfig);
 router.get('/categories', getShopCategoriesTree);
 router.get('/products', getShopProducts);
 router.get('/products/:id', getShopProductDetail);
-router.get('/promotions/active', getShopPromotions);
+router.get('/promotions/active', optionalProtectCustomer as any, getShopPromotions as any);
 router.get('/flash-sales/active', getShopActiveFlashSale);
 
 // ===========================================
@@ -76,5 +84,15 @@ router.get('/auth/loyalty-history', protectCustomer, getShopLoyaltyHistory);
 router.get('/orders', protectCustomer, getShopOrders);
 router.get('/orders/:id', protectCustomer, getShopOrderDetail);
 router.post('/orders/:id/cancel', protectCustomer, cancelShopOrder);
+router.post('/orders/:id/return', protectCustomer, requestShopOrderReturn);
+router.put('/orders/:id/payment-proof', protectCustomer as any, submitShopOrderPaymentProof);
+
+// ===========================================
+// MINIGAME
+// ===========================================
+router.get('/minigame/active', optionalProtectCustomer as any, getActiveMiniGame as any);
+router.post('/minigame/exchange-points', protectCustomer as any, exchangePointsForSpins as any);
+router.post('/minigame/spin', protectCustomer as any, spinWheel as any);
+router.get('/minigame/history', protectCustomer as any, getCustomerSpinHistory as any);
 
 export default router;

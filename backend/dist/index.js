@@ -35,6 +35,8 @@ const dashboardRoutes_1 = __importDefault(require("./routes/dashboardRoutes"));
 const loyaltyRoutes_1 = __importDefault(require("./routes/loyaltyRoutes"));
 const flashSaleRoutes_1 = __importDefault(require("./routes/flashSaleRoutes"));
 const shopRoutes_1 = __importDefault(require("./routes/shopRoutes"));
+const miniGameRoutes_1 = __importDefault(require("./routes/miniGameRoutes"));
+const giftRoutes_1 = __importDefault(require("./routes/giftRoutes"));
 // Database connection
 (0, db_1.default)();
 // Routes
@@ -51,6 +53,8 @@ app.use('/api/admin/upload', uploadRoutes_1.default);
 app.use('/api/admin/dashboard', dashboardRoutes_1.default);
 app.use('/api/admin/loyalty', loyaltyRoutes_1.default);
 app.use('/api/admin/flash-sales', flashSaleRoutes_1.default);
+app.use('/api/admin/minigame', miniGameRoutes_1.default);
+app.use('/api/admin/gifts', giftRoutes_1.default);
 app.use('/api/shop', shopRoutes_1.default);
 app.get('/', (req, res) => {
     res.send('SaaS Admin API is running...');

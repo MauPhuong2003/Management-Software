@@ -10,6 +10,7 @@ import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Account from './pages/Account';
 import Promotions from './pages/Promotions';
+import LuckyWheel from './pages/LuckyWheel';
 import { useQuery } from '@tanstack/react-query';
 import { shopService } from './services/shopService';
 import { useAuthStore } from './store/authStore';
@@ -54,6 +55,11 @@ function App() {
           <Route path="/account" element={
             <ProtectedRoute>
               <Account />
+            </ProtectedRoute>
+          } />
+          <Route path="/lucky-wheel" element={
+            <ProtectedRoute>
+              <LuckyWheel />
             </ProtectedRoute>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />

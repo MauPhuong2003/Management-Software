@@ -24,14 +24,15 @@ const Promotions = () => {
   const [editingPromo, setEditingPromo] = useState<any>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [promoImage, setPromoImage] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
     try {
       const res = await uploadService.uploadImage(file);
-      if (res.success) {
-        setPromoImage(res.url);
+      if (res.success && res.data) {
+        setPromoImage(res.data.url);
       }
     } catch (err) {
       alert('Không thể tải hình ảnh lên. Vui lòng thử lại!');
@@ -50,11 +51,13 @@ const Promotions = () => {
         minOrderValue: Number(formData.minOrderValue) || 0,
         buyQty: Number(formData.buyQty) || 1,
         discountYValue: Number(formData.discountYValue) || 0,
+        isRecursive: !!formData.isRecursive,
         usageLimit: formData.usageLimit !== '' && formData.usageLimit !== null && formData.usageLimit !== undefined ? Number(formData.usageLimit) : null,
         limitPerUser: formData.limitPerUser !== '' && formData.limitPerUser !== null && formData.limitPerUser !== undefined ? Number(formData.limitPerUser) : null,
         applyProductIds: selectedProducts,
         buyProductId: formData.buyProductId || null,
-        getProductId: formData.getProductId || null
+        getProductId: formData.getProductId || null,
+        isVisible: formData.isVisible === 'false' ? false : true
       };
       if (editingPromo) return promotionService.updatePromotion(editingPromo._id, payload);
       return promotionService.createPromotion(payload);
@@ -93,7 +96,8 @@ const Promotions = () => {
         getProductId: promo.getProductId?._id || promo.getProductId || '',
         discountYValue: promo.discountYValue || 0,
         usageLimit: promo.usageLimit !== null && promo.usageLimit !== undefined ? promo.usageLimit : '',
-        limitPerUser: promo.limitPerUser !== null && promo.limitPerUser !== undefined ? promo.limitPerUser : ''
+        limitPerUser: promo.limitPerUser !== null && promo.limitPerUser !== undefined ? promo.limitPerUser : '',
+        isVisible: promo.isVisible !== false ? 'true' : 'false'
       });
       setPromoImage(promo.image || '');
       setSelectedProducts(promo.applyProductIds ? promo.applyProductIds.map((p: any) => p._id || p) : []);
@@ -114,7 +118,8 @@ const Promotions = () => {
         getProductId: '',
         discountYValue: 0,
         usageLimit: '',
-        limitPerUser: ''
+        limitPerUser: '',
+        isVisible: 'true'
       });
       setPromoImage('');
       setSelectedProducts([]);
@@ -208,9 +213,14 @@ const Promotions = () => {
                   {item.startDate ? new Date(item.startDate).toLocaleDateString('vi-VN') : 'N/A'} - {item.endDate ? new Date(item.endDate).toLocaleDateString('vi-VN') : 'N/A'}
                 </td>
                 <td className="p-4">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${item.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'}`}>
-                    {item.status === 'active' ? 'Đang bật' : 'Đã tắt'}
-                  </span>
+                  <div className="flex flex-col gap-1 items-start">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${item.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'}`}>
+                      {item.status === 'active' ? 'Đang bật' : 'Đã tắt'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.isVisible !== false ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400'}`}>
+                      {item.isVisible !== false ? 'Hiển thị Shop' : 'Ẩn (MiniGame)'}
+                    </span>
+                  </div>
                 </td>
                 <td className="p-4 flex items-center gap-2">
                   {hasPermission('promotions', 'update') && (
@@ -249,20 +259,19 @@ const Promotions = () => {
                         <button type="button" onClick={() => setPromoImage('')} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 cursor-pointer"><X size={10} /></button>
                       </div>
                     ) : (
-                      <label className="w-20 h-20 border-2 border-dashed border-gray-350 dark:border-gray-650 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary dark:hover:border-primary transition-colors text-gray-500 dark:text-gray-400 shrink-0">
+                      <div 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-20 h-20 border-2 border-dashed border-gray-350 dark:border-gray-650 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary dark:hover:border-primary transition-colors text-gray-500 dark:text-gray-400 shrink-0"
+                      >
                         <Upload size={18} />
                         <span className="text-[10px] mt-1">Tải ảnh lên</span>
-                        <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
-                      </label>
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+                      </div>
                     )}
                     <p className="text-[10px] text-gray-400 font-medium">Khuyên dùng ảnh hình vuông (1:1) để hiển thị tối ưu trên vé giảm giá.</p>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">Mã giảm giá (Code)</label>
-                  <input {...register('code')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white uppercase font-bold text-primary text-sm" required />
-                </div>
-                <div>
+                <div className="col-span-2">
                   <label className="block text-sm font-medium mb-1 dark:text-gray-300">Loại hình Voucher</label>
                   <select {...register('applyType')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm">
                     <option value="order">Voucher cho Đơn hàng</option>
@@ -338,6 +347,20 @@ const Promotions = () => {
                       <input type="number" {...register('discountYValue')} min="1" max="100" className="w-full px-3 py-1.5 border rounded-lg text-xs dark:bg-gray-700 dark:border-gray-600 dark:text-white" required={applyType === 'buy_x_get_y'} />
                     </div>
                   </div>
+
+                  <div className="pt-2 flex items-center justify-between border-t border-purple-200 dark:border-purple-800/60">
+                    <div>
+                      <label className="text-xs font-bold text-purple-900 dark:text-purple-300 block">Chế độ Đệ quy</label>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 block font-medium leading-relaxed">
+                        • <b>Bật Đệ quy</b>: Mua 1 tặng 1, Mua 2 tặng 2, Mua 10 tặng 10 (nhân ưu đãi theo bội số số lượng X).<br/>
+                        • <b>Tắt Đệ quy</b>: Mua 1 tặng 1, Mua 2 tặng 1, Mua 10 tặng 1 (chỉ áp dụng ưu đãi cho tối đa 1 sản phẩm Y).
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                      <input type="checkbox" {...register('isRecursive')} className="sr-only peer" />
+                      <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -384,12 +407,21 @@ const Promotions = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-300">Trạng thái</label>
-                <select {...register('status')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm">
-                  <option value="active">Đang Bật</option>
-                  <option value="inactive">Đã Tắt</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">Trạng thái</label>
+                  <select {...register('status')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm">
+                    <option value="active">Đang Bật</option>
+                    <option value="inactive">Đã Tắt</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 dark:text-gray-300">Hiển thị ở trang Ưu đãi</label>
+                  <select {...register('isVisible')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm">
+                    <option value="true">Hiển thị</option>
+                    <option value="false">Ẩn (Chỉ dùng MiniGame)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t dark:border-gray-700 mt-4">

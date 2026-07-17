@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
 import { shopService } from '../services/shopService';
@@ -29,6 +30,14 @@ export const Header = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCatDropdownOpen, setIsCatDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+
+  // Active minigame check for navigation display
+  const { data: activeGameRes } = useQuery({
+    queryKey: ['active-minigame-header'],
+    queryFn: shopService.getActiveMiniGame,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+  const hasActiveGame = !!activeGameRes?.data?.minigame;
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -154,6 +163,14 @@ export const Header = () => {
             >
               <Ticket size={14} className="text-amber-500 animate-pulse"/> Ưu đãi
             </Link>
+            {hasActiveGame && (
+              <Link 
+                to="/lucky-wheel"
+                className="hover:text-primary dark:hover:text-indigo-400 transition-colors flex items-center gap-1 font-bold text-xs text-indigo-600 dark:text-indigo-400"
+              >
+                <span>🎡 Vòng quay may mắn</span>
+              </Link>
+            )}
           </nav>
 
           {/* Search bar with debounce suggestions */}
@@ -278,6 +295,15 @@ export const Header = () => {
                 >
                   <Ticket size={14} className="text-amber-500"/> Ưu đãi của Shop
                 </Link>
+                {hasActiveGame && (
+                  <Link 
+                    to="/lucky-wheel" 
+                    onClick={() => setIsMobileOpen(false)} 
+                    className="text-indigo-650 dark:text-indigo-400 py-1.5 border-b dark:border-gray-700 flex items-center gap-1.5 font-bold text-xs"
+                  >
+                    <span>🎡 Vòng quay may mắn</span>
+                  </Link>
+                )}
                 
                 {/* Mobile categories expandable list */}
                 <div className="py-1">

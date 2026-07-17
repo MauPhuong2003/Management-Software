@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.protectCustomer = exports.authorize = exports.protect = void 0;
+exports.optionalProtectCustomer = exports.protectCustomer = exports.authorize = exports.protect = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const User_1 = __importDefault(require("../models/User"));
 const protect = async (req, res, next) => {
@@ -71,3 +71,21 @@ const protectCustomer = async (req, res, next) => {
     }
 };
 exports.protectCustomer = protectCustomer;
+const optionalProtectCustomer = async (req, res, next) => {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        try {
+            token = req.headers.authorization.split(' ')[1];
+            const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_ACCESS_SECRET || 'secret');
+            const customer = await Customer_1.default.findById(decoded.id);
+            if (customer) {
+                req.customer = customer;
+            }
+        }
+        catch (error) {
+            // Ignore jwt verification errors for optional auth
+        }
+    }
+    next();
+};
+exports.optionalProtectCustomer = optionalProtectCustomer;

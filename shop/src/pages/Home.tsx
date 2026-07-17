@@ -31,6 +31,7 @@ export const Home = () => {
   const { data: bestSellersData } = useQuery({ queryKey: ['shop-products-bestseller'], queryFn: () => shopService.getProducts({ sort: 'bestseller', limit: 10 }) });
   const { data: allProductsData } = useQuery({ queryKey: ['shop-products-all'], queryFn: () => shopService.getProducts({ limit: 12 }) });
   const { data: categoriesData } = useQuery({ queryKey: ['shop-categories'], queryFn: shopService.getCategories });
+  const { data: minigameRes } = useQuery({ queryKey: ['shop-minigame-active'], queryFn: shopService.getActiveMiniGame });
 
   // Banner slider state
   const banners = settingsData?.data?.banners || [];
@@ -158,6 +159,38 @@ export const Home = () => {
         )}
       </section>
 
+      {/* MiniGame Promotion Banner */}
+      {minigameRes?.data?.minigame && (() => {
+        const activeMinigame = minigameRes.data.minigame;
+        return (
+          <section className="bg-gradient-to-r from-indigo-650 via-purple-600 to-pink-650 p-6 md:p-8 rounded-3xl text-white relative overflow-hidden shadow-lg flex flex-col md:flex-row items-center justify-between gap-6 text-left animate-fade-in duration-300">
+            <div className="absolute -right-16 -bottom-16 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -left-16 -top-16 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="space-y-2 text-left relative z-10 max-w-xl">
+              <span className="bg-amber-400 text-gray-900 font-extrabold text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full inline-block">
+                🎉 SỰ KIỆN ĐẶC BIỆT
+              </span>
+              <h2 className="text-xl md:text-2xl font-black font-sans leading-tight">
+                {activeMinigame.name}
+              </h2>
+              <p className="text-xs md:text-sm text-white/90 font-medium">
+                Chỉ với <span className="font-extrabold text-amber-300">{activeMinigame.pointsPerSpin} điểm</span> tích lũy để đổi lấy 1 lượt quay. Thử vận may trúng ngay Voucher hấp dẫn và Quà tặng giá trị từ shop!
+              </p>
+            </div>
+            
+            <div className="shrink-0 relative z-10">
+              <Link 
+                to="/lucky-wheel" 
+                className="px-6 py-3 bg-white hover:bg-amber-300 hover:text-gray-900 text-indigo-600 font-black rounded-2xl text-xs shadow-md transition-all inline-flex items-center gap-1.5 cursor-pointer border-0"
+              >
+                <span>🎡 Chơi ngay</span> <ArrowRight size={14}/>
+              </Link>
+            </div>
+          </section>
+        );
+      })()}
+
       {/* 2. Highlight Categories section */}
       {categories.length > 0 && (
         <section className="space-y-4">
@@ -203,7 +236,10 @@ export const Home = () => {
             {activeFlashSale.products?.slice(0, 4).map((pItem: any) => {
               if (!pItem.product || !pItem.active) return null;
               const prod = pItem.product;
-              const salePrice = Math.max(0, prod.priceSale - (prod.priceSale * (pItem.discountPercent / 100)));
+              const isQuotaAvailable = (pItem.limitQty || 0) > (pItem.soldQty || 0);
+              const salePrice = isQuotaAvailable
+                ? Math.max(0, prod.priceSale - (prod.priceSale * (pItem.discountPercent / 100)))
+                : prod.priceSale;
               const progressPercent = Math.min(100, Math.floor((pItem.soldQty / pItem.limitQty) * 100)) || 0;
 
               return (
@@ -219,7 +255,11 @@ export const Home = () => {
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={40}/></div>
                     )}
-                    <span className="absolute top-2 left-2 bg-gradient-to-r from-red-500 to-rose-600 text-white text-[9px] font-black px-2.5 py-1 rounded-md uppercase shadow-sm">⚡ -{pItem.discountPercent}%</span>
+                    {isQuotaAvailable ? (
+                      <span className="absolute top-2 left-2 bg-gradient-to-r from-red-500 to-rose-600 text-white text-[9px] font-black px-2.5 py-1 rounded-md uppercase shadow-sm">⚡ -{pItem.discountPercent}%</span>
+                    ) : (
+                      <span className="absolute top-2 left-2 bg-amber-500 text-white text-[8px] font-black px-2 py-0.5 rounded-md uppercase shadow-sm">⚡ Bán giá gốc</span>
+                    )}
                   </div>
 
                   {/* Text & Pricing Info */}
@@ -230,9 +270,11 @@ export const Home = () => {
                       </h4>
 
                       <div className="text-left space-y-0.5">
-                        <p className="text-[11px] text-gray-400 line-through font-medium leading-none">
-                          {prod.priceSale.toLocaleString()} VNĐ
-                        </p>
+                        {isQuotaAvailable && (
+                          <p className="text-[11px] text-gray-400 line-through font-medium leading-none">
+                            {prod.priceSale.toLocaleString()} VNĐ
+                          </p>
+                        )}
                         <p className="text-sm font-black text-red-500 leading-none">
                           {salePrice.toLocaleString()} VNĐ
                         </p>
@@ -243,10 +285,10 @@ export const Home = () => {
                     <div className="space-y-1.5 pt-2 border-t border-gray-50 dark:border-gray-700/50">
                       <div className="flex justify-between text-[9px] text-gray-400 font-bold">
                         <span>Đã bán: {pItem.soldQty}</span>
-                        <span>SL: {pItem.limitQty}</span>
+                        <span>SL Sale: {pItem.limitQty}</span>
                       </div>
                       <div className="w-full bg-gray-100 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-red-500 to-rose-500 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercent}%` }} />
+                        <div className={`h-full rounded-full transition-all duration-500 ${isQuotaAvailable ? 'bg-gradient-to-r from-red-500 to-rose-500' : 'bg-amber-500'}`} style={{ width: `${progressPercent}%` }} />
                       </div>
                     </div>
                   </div>

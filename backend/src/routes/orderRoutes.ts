@@ -1,5 +1,5 @@
 import express from 'express';
-import { getOrders, createOrder, updateOrderStatus } from '../controllers/orderController';
+import { getOrders, createOrder, updateOrderStatus, approveOrderReturn, rejectOrderReturn } from '../controllers/orderController';
 import { protect, authorize } from '../middlewares/authMiddleware';
 
 const router = express.Router();
@@ -9,5 +9,11 @@ router.route('/')
 
 router.route('/:id/status')
     .patch(protect, authorize('orders_update'), updateOrderStatus);
+
+router.route('/:id/return/approve')
+    .post(protect, authorize('orders_update'), approveOrderReturn);
+
+router.route('/:id/return/reject')
+    .post(protect, authorize('orders_update'), rejectOrderReturn);
 
 export default router;

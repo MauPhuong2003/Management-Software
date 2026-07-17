@@ -13,7 +13,14 @@ export interface ISetting extends Document {
         branchName: string;
         address: string;
         openingHours: string;
+        lat?: number;
+        lon?: number;
     }[];
+    bankInfo?: {
+        bankName: string;
+        accountHolder: string;
+        accountNumber: string;
+    } | null;
 }
 
 const settingSchema = new Schema<ISetting>({
@@ -28,8 +35,15 @@ const settingSchema = new Schema<ISetting>({
     addresses: [{
         branchName: String,
         address: String,
-        openingHours: String
-    }]
+        openingHours: String,
+        lat: Number,
+        lon: Number
+    }],
+    bankInfo: {
+        bankName: { type: String, default: '' },
+        accountHolder: { type: String, default: '' },
+        accountNumber: { type: String, default: '' }
+    }
 }, { timestamps: true });
 
 export default mongoose.model<ISetting>('Setting', settingSchema);

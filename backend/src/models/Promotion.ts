@@ -20,6 +20,8 @@ export interface IPromotion extends Document {
     usageLimit?: number;
     limitPerUser?: number;
     usedCount: number;
+    isVisible: boolean; // Show/Hide toggle
+    isRecursive?: boolean; // Recursive toggle for Buy X Get Y
 }
 
 const promotionSchema = new Schema<IPromotion>({
@@ -41,7 +43,9 @@ const promotionSchema = new Schema<IPromotion>({
     discountYValue: { type: Number, default: 0 },
     usageLimit: { type: Number, default: null },
     limitPerUser: { type: Number, default: null },
-    usedCount: { type: Number, default: 0 }
+    usedCount: { type: Number, default: 0 },
+    isVisible: { type: Boolean, default: true },
+    isRecursive: { type: Boolean, default: false }
 }, { timestamps: true });
 
 export default mongoose.model<IPromotion>('Promotion', promotionSchema);

@@ -36,6 +36,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const promotionSchema = new mongoose_1.Schema({
     code: { type: String, required: true, unique: true },
+    name: { type: String, required: true },
+    description: { type: String, default: '' },
+    image: { type: String, default: '' },
     type: { type: String, enum: ['percent', 'fixed'], default: 'percent' },
     value: { type: Number, required: true },
     minOrderValue: { type: Number, default: 0 },
@@ -50,6 +53,8 @@ const promotionSchema = new mongoose_1.Schema({
     discountYValue: { type: Number, default: 0 },
     usageLimit: { type: Number, default: null },
     limitPerUser: { type: Number, default: null },
-    usedCount: { type: Number, default: 0 }
+    usedCount: { type: Number, default: 0 },
+    isVisible: { type: Boolean, default: true },
+    isRecursive: { type: Boolean, default: false }
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Promotion', promotionSchema);

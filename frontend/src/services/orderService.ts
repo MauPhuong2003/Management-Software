@@ -4,8 +4,16 @@ export const orderService = {
     const res = await api.get('/orders', { params });
     return res.data;
   },
-  updateOrderStatus: async (id: string, status: string) => {
-    const res = await api.patch(`/orders/${id}/status`, { status });
+  updateOrderStatus: async (id: string, payload: { status?: string; paymentStatus?: string }) => {
+    const res = await api.patch(`/orders/${id}/status`, payload);
+    return res.data;
+  },
+  approveReturn: async (id: string, adminComment: string) => {
+    const res = await api.post(`/orders/${id}/return/approve`, { adminComment });
+    return res.data;
+  },
+  rejectReturn: async (id: string, adminComment: string) => {
+    const res = await api.post(`/orders/${id}/return/reject`, { adminComment });
     return res.data;
   }
 };

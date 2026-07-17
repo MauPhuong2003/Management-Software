@@ -9,4 +9,5 @@ router.put('/config', authMiddleware_1.protect, (0, authMiddleware_1.authorize)(
 router.post('/recalculate', authMiddleware_1.protect, (0, authMiddleware_1.authorize)('loyalty_update'), loyaltyController_1.recalculateAllTiers);
 router.post('/adjust/:customerId', authMiddleware_1.protect, (0, authMiddleware_1.authorize)('customers_update'), loyaltyController_1.adjustCustomerPoints); // manual adjust point is a customer modification action, so it checks customer_update
 router.post('/backfill', authMiddleware_1.protect, (0, authMiddleware_1.authorize)('loyalty_update'), loyaltyController_1.backfillLoyaltyPoints);
+router.get('/history/:customerId', authMiddleware_1.protect, (0, authMiddleware_1.authorize)('customers_read'), loyaltyController_1.getCustomerPointHistory);
 exports.default = router;

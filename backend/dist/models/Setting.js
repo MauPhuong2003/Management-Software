@@ -46,7 +46,14 @@ const settingSchema = new mongoose_1.Schema({
     addresses: [{
             branchName: String,
             address: String,
-            openingHours: String
-        }]
+            openingHours: String,
+            lat: Number,
+            lon: Number
+        }],
+    bankInfo: {
+        bankName: { type: String, default: '' },
+        accountHolder: { type: String, default: '' },
+        accountNumber: { type: String, default: '' }
+    }
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Setting', settingSchema);

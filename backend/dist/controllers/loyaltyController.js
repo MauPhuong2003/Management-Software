@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillLoyaltyPoints = exports.adjustCustomerPoints = exports.recalculateAllTiers = exports.updateLoyaltyConfig = exports.getLoyaltyConfig = exports.awardLoyaltyPoints = exports.getTierForPoints = void 0;
+exports.getCustomerPointHistory = exports.backfillLoyaltyPoints = exports.adjustCustomerPoints = exports.recalculateAllTiers = exports.updateLoyaltyConfig = exports.getLoyaltyConfig = exports.awardLoyaltyPoints = exports.getTierForPoints = void 0;
 const LoyaltyConfig_1 = __importDefault(require("../models/LoyaltyConfig"));
 const Customer_1 = __importDefault(require("../models/Customer"));
 const Order_1 = __importDefault(require("../models/Order"));
+const PointHistory_1 = __importDefault(require("../models/PointHistory"));
 // Helper: determine tier name from points and config tiers (prevent downgrade if current tier is higher)
 const getTierForPoints = (points, tiers, currentTierName) => {
     const sorted = [...tiers].sort((a, b) => b.minPoints - a.minPoints);
@@ -26,7 +27,7 @@ const getTierForPoints = (points, tiers, currentTierName) => {
 };
 exports.getTierForPoints = getTierForPoints;
 // Award loyalty points to a customer after a paid order
-const awardLoyaltyPoints = async (customerId, orderAmount, orderSource) => {
+const awardLoyaltyPoints = async (customerId, orderAmount, orderSource, orderId) => {
     try {
         const config = await LoyaltyConfig_1.default.findOne();
         if (!config || !config.isActive)
@@ -44,14 +45,24 @@ const awardLoyaltyPoints = async (customerId, orderAmount, orderSource) => {
         // Find current tier multiplier
         const currentTier = config.tiers.find(t => t.name === customer.tier);
         const multiplier = currentTier?.pointMultiplier || 1;
-        // Calculate points: orderAmount / vndToEarnOnePoint * multiplier
+        // Calculate points: orderAmount / vndToEarn onePoint * multiplier
         const vndToEarn = config.vndToEarnOnePoint || 100000;
         const pointsEarned = Math.floor((orderAmount / vndToEarn) * multiplier);
-        customer.loyaltyPoints = (customer.loyaltyPoints || 0) + pointsEarned;
-        customer.totalSpent = (customer.totalSpent || 0) + orderAmount;
-        // Recalculate tier (prevent downgrade)
-        customer.tier = (0, exports.getTierForPoints)(customer.loyaltyPoints, config.tiers, customer.tier);
-        await customer.save();
+        if (pointsEarned > 0) {
+            customer.loyaltyPoints = (customer.loyaltyPoints || 0) + pointsEarned;
+            customer.totalSpent = (customer.totalSpent || 0) + orderAmount;
+            // Recalculate tier (prevent downgrade)
+            customer.tier = (0, exports.getTierForPoints)(customer.loyaltyPoints, config.tiers, customer.tier);
+            await customer.save();
+            // Create point history entry
+            await PointHistory_1.default.create({
+                customer: customer._id,
+                order: orderId || null,
+                points: pointsEarned,
+                type: 'earn',
+                reason: `Tích lũy từ đơn hàng ${orderSource === 'pos' ? 'POS' : 'Website'}`
+            });
+        }
     }
     catch (err) {
         console.error('Error awarding loyalty points:', err);
@@ -163,7 +174,7 @@ exports.recalculateAllTiers = recalculateAllTiers;
 // POST /loyalty/adjust/:customerId
 const adjustCustomerPoints = async (req, res) => {
     try {
-        const { points } = req.body;
+        const { points, reason } = req.body;
         const customer = await Customer_1.default.findById(req.params.customerId);
         if (!customer) {
             res.status(404).json({ success: false, message: 'Không tìm thấy khách hàng' });
@@ -174,6 +185,13 @@ const adjustCustomerPoints = async (req, res) => {
         if (config)
             customer.tier = (0, exports.getTierForPoints)(customer.loyaltyPoints, config.tiers, customer.tier);
         await customer.save();
+        // Create log entry
+        await PointHistory_1.default.create({
+            customer: customer._id,
+            points: Number(points),
+            type: Number(points) >= 0 ? 'earn' : 'spend',
+            reason: reason || 'Điều chỉnh điểm thủ công từ Admin'
+        });
         res.json({ success: true, data: customer });
     }
     catch (e) {
@@ -222,10 +240,20 @@ const backfillLoyaltyPoints = async (req, res) => {
             const multiplier = currentTier?.pointMultiplier || 1;
             const vndToEarn = config.vndToEarnOnePoint || 100000;
             const pointsEarned = Math.floor((order.totalAmount / vndToEarn) * multiplier);
-            customer.loyaltyPoints = (customer.loyaltyPoints || 0) + pointsEarned;
-            customer.totalSpent = (customer.totalSpent || 0) + order.totalAmount;
-            customer.tier = (0, exports.getTierForPoints)(customer.loyaltyPoints, config.tiers, customer.tier);
-            await customer.save();
+            if (pointsEarned > 0) {
+                customer.loyaltyPoints = (customer.loyaltyPoints || 0) + pointsEarned;
+                customer.totalSpent = (customer.totalSpent || 0) + order.totalAmount;
+                customer.tier = (0, exports.getTierForPoints)(customer.loyaltyPoints, config.tiers, customer.tier);
+                await customer.save();
+                // Create point history entry
+                await PointHistory_1.default.create({
+                    customer: customer._id,
+                    order: order._id,
+                    points: pointsEarned,
+                    type: 'earn',
+                    reason: `Tích lũy từ đơn hàng ${src === 'pos' ? 'POS' : 'Website'} (Backfill)`
+                });
+            }
             // Mark order as processed
             await Order_1.default.findByIdAndUpdate(order._id, { loyaltyAwarded: true });
             totalPointsAwarded += pointsEarned;
@@ -254,3 +282,16 @@ const backfillLoyaltyPoints = async (req, res) => {
     }
 };
 exports.backfillLoyaltyPoints = backfillLoyaltyPoints;
+// GET /loyalty/history/:customerId
+const getCustomerPointHistory = async (req, res) => {
+    try {
+        const history = await PointHistory_1.default.find({ customer: req.params.customerId })
+            .populate('order', 'orderCode totalAmount')
+            .sort({ createdAt: -1 });
+        res.json({ success: true, data: history });
+    }
+    catch (e) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+};
+exports.getCustomerPointHistory = getCustomerPointHistory;

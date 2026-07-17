@@ -340,6 +340,56 @@ export const getShopProductDetail = async (req: Request, res: Response): Promise
             return;
         }
 
+        // Live sync warehouse stock for this product
+        const warehouses = await Warehouse.find({ status: 'active' });
+        const skuStockMap: Record<string, number> = {};
+        let totalWhStockForProduct = 0;
+
+        for (const wh of warehouses) {
+            for (const item of wh.products) {
+                if (item.productId && item.productId.toString() === product._id.toString()) {
+                    totalWhStockForProduct += item.stock;
+                    if (item.variantSku) {
+                        skuStockMap[item.variantSku] = (skuStockMap[item.variantSku] || 0) + item.stock;
+                    }
+                }
+            }
+        }
+
+        let isUpdated = false;
+        if (product.variants && product.variants.length > 0) {
+            for (const variant of product.variants) {
+                const whStock = skuStockMap[variant.sku];
+                if (whStock !== undefined && variant.stock !== whStock) {
+                    variant.stock = whStock;
+                    isUpdated = true;
+                } else if (whStock === undefined && totalWhStockForProduct > 0 && variant.stock === 0) {
+                    variant.stock = totalWhStockForProduct;
+                    isUpdated = true;
+                }
+            }
+        } else {
+            if (totalWhStockForProduct > 0) {
+                product.variants = [{
+                    sku: product.sku,
+                    price: product.priceSale,
+                    priceCompare: product.priceCompare,
+                    stock: totalWhStockForProduct,
+                    barcode: '',
+                    weight: 0,
+                    status: 'active',
+                    image: product.images?.[0] || '',
+                    attributes: []
+                }];
+                isUpdated = true;
+            }
+        }
+
+        if (isUpdated) {
+            product.markModified('variants');
+            await product.save();
+        }
+
         // Related products in the same categories
         const related = await Product.find({
             _id: { $ne: product._id },
@@ -392,15 +442,36 @@ export const getShopCategoriesTree = async (req: Request, res: Response): Promis
 // PROMOTIONS & FLASH SALES
 // ===========================================
 
-export const getShopPromotions = async (req: Request, res: Response): Promise<void> => {
+export const getShopPromotions = async (req: CustomerAuthRequest, res: Response): Promise<void> => {
     try {
         const now = new Date();
-        const promotions = await Promotion.find({
+        const customer = req.customer;
+
+        const query: any = {
             status: 'active',
             startDate: { $lte: now },
             endDate: { $gte: now }
-        }).populate('applyProductIds buyProductId getProductId', 'name sku');
-        res.json({ success: true, data: promotions });
+        };
+
+        if (customer && customer.vouchers && customer.vouchers.length > 0) {
+            query.$or = [
+                { isVisible: { $ne: false } },
+                { _id: { $in: customer.vouchers } }
+            ];
+        } else {
+            query.isVisible = { $ne: false };
+        }
+
+        const promotions = await Promotion.find(query)
+            .populate('applyProductIds buyProductId getProductId', 'name sku')
+            .lean();
+
+        const data = promotions.map((p: any) => ({
+            ...p,
+            isPersonalVoucher: customer?.vouchers?.some(vId => vId.toString() === p._id.toString()) || false
+        }));
+
+        res.json({ success: true, data });
     } catch (e: any) {
         res.status(500).json({ success: false, message: e.message });
     }
@@ -467,6 +538,30 @@ export const validateShopVoucher = async (req: Request, res: Response): Promise<
             return;
         }
 
+        // Validate minigame only voucher ownership (isVisible === false)
+        if (voucher.isVisible === false) {
+            let customerId: string | null = null;
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                const token = authHeader.split(' ')[1];
+                try {
+                    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'secret') as any;
+                    customerId = decoded.id;
+                } catch (e) {}
+            }
+
+            if (!customerId) {
+                res.status(401).json({ success: false, message: 'Vui lòng đăng nhập để sử dụng mã giảm giá này' });
+                return;
+            }
+
+            const customer = await Customer.findById(customerId);
+            if (!customer || !customer.vouchers || !customer.vouchers.some(vId => vId.toString() === voucher._id.toString())) {
+                res.status(400).json({ success: false, message: 'Mã giảm giá này chỉ dành cho người quay trúng trong MiniGame!' });
+                return;
+            }
+        }
+
         if (now < voucher.startDate || now > voucher.endDate) {
             res.status(400).json({ success: false, message: 'Mã giảm giá đã hết hạn sử dụng' });
             return;
@@ -502,7 +597,7 @@ export const validateShopVoucher = async (req: Request, res: Response): Promise<
         // Validate buy_x_get_y voucher
         if (voucher.applyType === 'buy_x_get_y') {
             if (!items || !Array.isArray(items) || items.length === 0) {
-                res.status(400).json({ success: false, message: 'Chương trình mua X tặng Y yêu cầu có sản phẩm trong giỏ hàng.' });
+                res.status(400).json({ success: false, message: 'Chương trình mua X giảm % Y yêu cầu có sản phẩm trong giỏ hàng.' });
                 return;
             }
             const buyProdId = (voucher.buyProductId?._id || voucher.buyProductId)?.toString();
@@ -517,14 +612,57 @@ export const validateShopVoucher = async (req: Request, res: Response): Promise<
                 return prodId?.toString() === getProdId;
             });
 
-            if (!buyItem || buyItem.qty < (voucher.buyQty || 1)) {
-                res.status(400).json({ success: false, message: `Mã giảm giá yêu cầu mua tối thiểu ${voucher.buyQty || 1} sản phẩm điều kiện.` });
+            const buyQtyNeeded = voucher.buyQty || 1;
+            if (!buyItem || buyItem.qty < buyQtyNeeded) {
+                res.status(400).json({ success: false, message: `Mã giảm giá yêu cầu mua tối thiểu ${buyQtyNeeded} sản phẩm điều kiện.` });
                 return;
             }
-            if (!getItem) {
-                res.status(400).json({ success: false, message: `Vui lòng thêm sản phẩm được ưu đãi vào giỏ hàng để được giảm giá.` });
+
+            // Find Product Y from DB if missing from cart
+            let productYDoc: any = null;
+            if (getItem) {
+                productYDoc = typeof getItem.product === 'object' ? getItem.product : await Product.findById(getProdId).lean();
+            } else if (getProdId) {
+                productYDoc = await Product.findById(getProdId).lean();
+            }
+
+            if (!productYDoc) {
+                res.status(400).json({ success: false, message: `Sản phẩm nhận ưu đãi (Y) không tồn tại.` });
                 return;
             }
+
+            // Calculate multiplier for recursive mode
+            let multiplier = 1;
+            if (voucher.isRecursive) {
+                multiplier = Math.floor(buyItem.qty / buyQtyNeeded);
+            }
+
+            const yPercent = voucher.discountYValue || voucher.value || 100;
+            const getItemPrice = productYDoc.priceSale || productYDoc.priceCompare || getItem?.price || 0;
+            const singleYDiscount = Math.floor((getItemPrice * yPercent) / 100);
+            const eligibleYQty = getItem ? Math.min(getItem.qty, multiplier) : multiplier;
+            const calculatedDiscount = singleYDiscount * eligibleYQty;
+
+            res.json({
+                success: true,
+                data: {
+                    ...voucher.toObject(),
+                    buyProductId: voucher.buyProductId,
+                    getProductId: productYDoc,
+                    calculatedDiscount,
+                    multiplier,
+                    eligibleYQty,
+                    giftProduct: {
+                        product: productYDoc,
+                        variantSku: productYDoc.sku || null,
+                        qty: multiplier,
+                        price: Math.floor(getItemPrice * (100 - yPercent) / 100),
+                        isGift: true,
+                        giftNote: 'Sản phẩm này được tặng kèm'
+                    }
+                }
+            });
+            return;
         }
 
         res.json({ success: true, data: voucher });
@@ -630,12 +768,20 @@ export const placeShopOrder = async (req: Request, res: Response): Promise<void>
             }
         }
 
-        // Increment usage count for all applied promotion codes
+        // Increment usage count for all applied promotion codes and remove used vouchers from customer profile
         if (allPromoCodes.length > 0) {
+            const usedPromos = await Promotion.find({ code: { $in: allPromoCodes } });
             await Promotion.updateMany(
                 { code: { $in: allPromoCodes } },
                 { $inc: { usedCount: 1 } }
             );
+
+            if (customerId && usedPromos.length > 0) {
+                const usedPromoIds = usedPromos.map(p => p._id);
+                await Customer.findByIdAndUpdate(customerId, {
+                    $pull: { vouchers: { $in: usedPromoIds } }
+                });
+            }
         }
 
         // Award loyalty points and upgrade tier for logged-in customers
@@ -691,7 +837,9 @@ export const placeShopOrder = async (req: Request, res: Response): Promise<void>
             paymentStatus: 'pending',
             orderStatus: 'pending',
             orderSource: 'website',
-            note: finalNote
+            note: finalNote,
+            deliveryType: deliveryType || 'shipping',
+            pickupBranch: deliveryType === 'pickup' ? pickupBranch : null
         });
 
         res.status(201).json({ success: true, data: newOrder });
@@ -937,6 +1085,83 @@ export const getShopLoyaltyConfig = async (req: Request, res: Response): Promise
                 isActive: config.isActive,
             }
         });
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+};
+
+export const requestShopOrderReturn = async (req: CustomerAuthRequest, res: Response): Promise<void> => {
+    try {
+        const { reason, images } = req.body;
+        if (!reason || reason.trim() === '') {
+            res.status(400).json({ success: false, message: 'Vui lòng cung cấp lý do hoàn trả cụ thể' });
+            return;
+        }
+
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            res.status(404).json({ success: false, message: 'Đơn hàng không tồn tại' });
+            return;
+        }
+
+        // Verify ownership
+        if (order.customer?.toString() !== req.customer?._id?.toString()) {
+            res.status(403).json({ success: false, message: 'Bạn không có quyền yêu cầu hoàn hàng cho đơn hàng này' });
+            return;
+        }
+
+        // Only delivered orders can be returned
+        if (order.orderStatus !== 'delivered') {
+            res.status(400).json({ success: false, message: 'Chỉ có thể yêu cầu hoàn trả cho đơn hàng đã giao thành công' });
+            return;
+        }
+
+        order.returnRequest = {
+            reason,
+            images: images || [],
+            status: 'pending',
+            adminComment: '',
+            createdAt: new Date()
+        };
+
+        await order.save();
+        res.json({ success: true, message: 'Gửi yêu cầu hoàn hàng thành công', data: order });
+    } catch (e: any) {
+        res.status(500).json({ success: false, message: e.message });
+    }
+};
+
+export const submitShopOrderPaymentProof = async (req: CustomerAuthRequest, res: Response): Promise<void> => {
+    try {
+        const { paymentProof } = req.body;
+        if (!paymentProof || paymentProof.trim() === '') {
+            res.status(400).json({ success: false, message: 'Vui lòng cung cấp hình ảnh minh chứng chuyển khoản' });
+            return;
+        }
+
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            res.status(404).json({ success: false, message: 'Đơn hàng không tồn tại' });
+            return;
+        }
+
+        // Verify ownership
+        if (order.customer?.toString() !== req.customer?._id?.toString()) {
+            res.status(403).json({ success: false, message: 'Bạn không có quyền gửi minh chứng cho đơn hàng này' });
+            return;
+        }
+
+        // Must be bank transfer payment method
+        if (order.paymentMethod !== 'bank_transfer') {
+            res.status(400).json({ success: false, message: 'Chỉ đơn hàng chuyển khoản mới cần gửi minh chứng' });
+            return;
+        }
+
+        order.paymentProof = paymentProof;
+        order.paymentProofSubmittedAt = new Date();
+
+        await order.save();
+        res.json({ success: true, message: 'Gửi minh chứng chuyển khoản thành công', data: order });
     } catch (e: any) {
         res.status(500).json({ success: false, message: e.message });
     }

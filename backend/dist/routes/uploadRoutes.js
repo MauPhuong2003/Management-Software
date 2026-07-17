@@ -26,4 +26,24 @@ router.post('/', authMiddleware_1.protect, uploadMiddleware_1.upload.single('ima
         res.status(500).json({ success: false, message: error.message });
     }
 });
+router.post('/customer', authMiddleware_1.protectCustomer, uploadMiddleware_1.upload.single('image'), (req, res) => {
+    try {
+        if (!req.file) {
+            res.status(400).json({ success: false, message: 'Vui lòng chọn một file ảnh' });
+            return;
+        }
+        const fileUrl = `/uploads/${req.file.filename}`;
+        res.json({
+            success: true,
+            fileUrl,
+            data: {
+                url: fileUrl,
+                filename: req.file.filename
+            }
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 exports.default = router;

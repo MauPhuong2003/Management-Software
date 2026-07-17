@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { orderService } from '../services/orderService';
 import { loyaltyService } from '../services/loyaltyService';
+import { settingService } from '../services/settingService';
 import { Eye, X, FileText, CheckCircle, Truck, MapPin, XCircle } from 'lucide-react';
 
 const API_BASE = 'http://localhost:5000';
@@ -23,11 +24,61 @@ const Orders = () => {
   });
   const tiers = loyaltyConfig?.data?.tiers || [];
 
+  const { data: settingsData } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingService.getSettings
+  });
+  const branches = settingsData?.data?.addresses || [];
+
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [proofModalUrl, setProofModalUrl] = useState<string | null>(null);
+  const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+
+  const [adminComment, setAdminComment] = useState('');
+  const [isApprovingReturn, setIsApprovingReturn] = useState(false);
+  const [isRejectingReturn, setIsRejectingReturn] = useState(false);
+
+  const handleApproveReturn = async (id: string) => {
+    if (!confirm('Xác nhận ĐỒNG Ý hoàn hàng & hoàn tiền cho đơn hàng này? Tồn kho và điểm thành viên sẽ tự động được hoàn lại.')) return;
+    setIsApprovingReturn(true);
+    try {
+      await orderService.approveReturn(id, adminComment || 'Đã phê duyệt hoàn hàng & hoàn tiền');
+      alert('Đã phê duyệt yêu cầu hoàn trả thành công!');
+      setAdminComment('');
+      setIsDetailModalOpen(false);
+      setSelectedOrder(null);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Không thể phê duyệt yêu cầu hoàn trả');
+    } finally {
+      setIsApprovingReturn(false);
+    }
+  };
+
+  const handleRejectReturn = async (id: string) => {
+    if (!adminComment.trim()) {
+      alert('Vui lòng nhập lý do từ chối cụ thể!');
+      return;
+    }
+    setIsRejectingReturn(true);
+    try {
+      await orderService.rejectReturn(id, adminComment);
+      alert('Đã từ chối yêu cầu hoàn trả thành công!');
+      setAdminComment('');
+      setIsDetailModalOpen(false);
+      setSelectedOrder(null);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Không thể từ chối yêu cầu hoàn trả');
+    } finally {
+      setIsRejectingReturn(false);
+    }
+  };
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string, status: string }) => orderService.updateOrderStatus(id, status),
+    mutationFn: ({ id, status, paymentStatus }: { id: string, status?: string, paymentStatus?: string }) => 
+      orderService.updateOrderStatus(id, { status, paymentStatus }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] })
   });
 
@@ -42,7 +93,10 @@ const Orders = () => {
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: string, order?: any) => {
+    if (status === 'pending' && order && (order.paymentMethod === 'bank_transfer' || order.paymentMethod === 'transfer') && order.paymentStatus === 'pending') {
+      return 'Chờ thanh toán';
+    }
     switch(status) {
       case 'pending': return 'Chờ xác nhận';
       case 'confirmed': return 'Đã xác nhận';
@@ -51,6 +105,43 @@ const Orders = () => {
       case 'cancelled': return 'Đã huỷ';
       default: return status;
     }
+  };
+
+  const getOrderDeliveryDetails = (order: any) => {
+    let deliveryType = order.deliveryType || 'shipping';
+    let pickupBranch = order.pickupBranch || '';
+
+    if (!order.deliveryType && order.note) {
+      const pickupMatch = order.note.match(/\[Nhận tại cửa hàng:\s*([^\]]+)\]/);
+      if (pickupMatch) {
+        deliveryType = 'pickup';
+        pickupBranch = pickupMatch[1];
+      }
+    }
+
+    return { deliveryType, pickupBranch };
+  };
+
+  const resolveBranchName = (pickupBranchStr: string) => {
+    if (!pickupBranchStr) return '';
+    
+    // 1. Match directly by branchName (case-insensitive)
+    const matchByName = branches.find((b: any) => b.branchName?.toLowerCase() === pickupBranchStr.toLowerCase());
+    if (matchByName) return matchByName.branchName;
+
+    // 2. Match by address (case-insensitive)
+    const matchByAddress = branches.find((b: any) => b.address?.toLowerCase() === pickupBranchStr.toLowerCase());
+    if (matchByAddress) return matchByAddress.branchName;
+
+    // 3. Fallback partial match (if address contains string or string contains address)
+    const partialMatch = branches.find((b: any) => 
+      (b.address && pickupBranchStr.toLowerCase().includes(b.address.toLowerCase())) ||
+      (b.address && b.address.toLowerCase().includes(pickupBranchStr.toLowerCase()))
+    );
+    if (partialMatch) return partialMatch.branchName;
+
+    // 4. Default fallback: display name truncated if too long
+    return pickupBranchStr.length > 25 ? pickupBranchStr.slice(0, 25) + '...' : pickupBranchStr;
   };
 
   return (
@@ -63,78 +154,189 @@ const Orders = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 text-sm">
-              <th className="p-4 font-medium border-b dark:border-gray-700">Mã đơn</th>
-              <th className="p-4 font-medium border-b dark:border-gray-700">Khách hàng</th>
-              <th className="p-4 font-medium border-b dark:border-gray-700">Nguồn</th>
-              <th className="p-4 font-medium border-b dark:border-gray-700">Tổng tiền</th>
-              <th className="p-4 font-medium border-b dark:border-gray-700">Trạng thái</th>
-              <th className="p-4 font-medium border-b dark:border-gray-700">Thanh toán</th>
               <th className="p-4 font-medium border-b dark:border-gray-700">Ngày tạo</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Đơn hàng</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Khách hàng</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Tổng tiền</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Hình thức thanh toán</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Đơn vị vận chuyển</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Cửa hàng</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Trạng thái đơn hàng</th>
+              <th className="p-4 font-medium border-b dark:border-gray-700">Trạng thái thanh toán</th>
               <th className="p-4 font-medium border-b dark:border-gray-700">Hành động</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading ? <tr><td colSpan={8} className="p-4 text-center text-gray-500">Đang tải...</td></tr> : data?.data?.map((order: any) => (
-              <tr key={order._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <td className="p-4 text-gray-800 dark:text-gray-200 font-bold">{order.orderCode}</td>
-                <td className="p-4 text-gray-600 dark:text-gray-400">{order.customer?.name || 'Khách vãng lai'}</td>
-                <td className="p-4">
-                  {order.orderSource === 'pos' ? (
-                    <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 text-xs font-semibold">
-                      💻 Mini POS
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400 text-xs font-semibold">
-                      🌐 Website
-                    </span>
-                  )}
-                </td>
-                <td className="p-4 text-primary font-bold">{order.totalAmount.toLocaleString()}đ</td>
-                <td className="p-4">
-                  {order.orderStatus === 'delivered' || order.orderStatus === 'cancelled' ? (
-                    <span className={`px-2.5 py-1.5 rounded-lg text-sm font-semibold border-0 ${getStatusColor(order.orderStatus)} inline-block`}>
-                      {getStatusText(order.orderStatus)}
-                    </span>
-                  ) : (
-                    <select 
-                      value={order.orderStatus}
-                      onChange={(e) => statusMutation.mutate({ id: order._id, status: e.target.value })}
-                      disabled={statusMutation.isPending}
-                      className={`px-2 py-1.5 rounded-lg text-sm font-medium outline-none border-0 ${getStatusColor(order.orderStatus)} cursor-pointer`}
-                    >
-                      <option value="pending">Chờ xác nhận</option>
-                      <option value="confirmed">Đã xác nhận</option>
-                      <option value="shipping">Đang giao</option>
-                      <option value="delivered">Đã hoàn thành</option>
-                      <option value="cancelled">Đã huỷ</option>
-                    </select>
-                  )}
-                </td>
-                <td className="p-4">
-                  <div className="flex flex-col gap-1.5 items-start">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${order.paymentStatus === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400'}`}>
-                      {order.paymentStatus === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                    </span>
-                    <span className="text-[10px] text-gray-600 dark:text-gray-400 font-semibold bg-gray-50 dark:bg-gray-700 border dark:border-gray-600 px-1.5 py-0.5 rounded">
-                      {order.paymentMethod === 'cash' ? '💵 Tiền mặt' : 
-                       order.paymentMethod === 'transfer' ? '💳 Chuyển khoản' : 
-                       order.paymentMethod || 'Tiền mặt'}
-                    </span>
-                  </div>
-                </td>
-                <td className="p-4 text-gray-500 dark:text-gray-400 text-sm">
-                  {new Date(order.createdAt).toLocaleDateString('vi-VN')}
-                </td>
-                <td className="p-4">
-                  <button 
-                    onClick={() => { setSelectedOrder(order); setIsDetailModalOpen(true); }}
-                    className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors"
-                  >
-                    <Eye size={18} />
-                  </button>
-                </td>
+            {isLoading ? (
+              <tr>
+                <td colSpan={10} className="p-4 text-center text-gray-500">Đang tải...</td>
               </tr>
-            ))}
+            ) : (
+              data?.data?.map((order: any) => {
+                const { deliveryType, pickupBranch } = getOrderDeliveryDetails(order);
+                return (
+                  <tr key={order._id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    {/* 1. Ngày tạo */}
+                    <td className="p-4 text-gray-500 dark:text-gray-400 text-xs font-medium">
+                      {new Date(order.createdAt).toLocaleString('vi-VN')}
+                    </td>
+
+                    {/* 2. Đơn hàng */}
+                    <td className="p-4 text-gray-805 dark:text-gray-200 text-xs">
+                      <div className="flex flex-col gap-1 items-start font-bold font-mono">
+                        <span>{order.orderCode}</span>
+                        {order.returnRequest && order.returnRequest.reason && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase border ${
+                            order.returnRequest.status === 'approved'
+                              ? 'bg-green-150 text-green-700 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-900/30'
+                              : order.returnRequest.status === 'rejected'
+                              ? 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-700/55 dark:text-gray-400 dark:border-gray-600'
+                              : 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/30 animate-pulse'
+                          }`}>
+                            🔄 {
+                              order.returnRequest.status === 'approved' ? 'Đã hoàn hàng' :
+                              order.returnRequest.status === 'rejected' ? 'Từ chối hoàn' : 'Yêu cầu hoàn'
+                            }
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* 3. Khách hàng */}
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center font-bold text-primary text-sm uppercase overflow-hidden shrink-0 border dark:border-gray-700">
+                          {order.customer?.avatar ? (
+                            <img src={order.customer.avatar.startsWith('http') ? order.customer.avatar : `${API_BASE}${order.customer.avatar}`} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{(order.customer?.name || 'K')[0]}</span>
+                          )}
+                        </div>
+                        <div className="text-left">
+                          <p className="font-bold text-gray-800 dark:text-gray-200 text-xs">{order.customer?.name || 'Khách vãng lai'}</p>
+                          {order.customer?.phone && (
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono mt-0.5">{order.customer.phone}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* 4. Tổng tiền */}
+                    <td className="p-4 text-primary font-extrabold text-sm">{order.totalAmount.toLocaleString()}đ</td>
+
+                    {/* 5. Hình thức thanh toán */}
+                    <td className="p-4">
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                          {order.paymentMethod === 'cash' ? 'Tiền mặt (COD)' : 
+                           order.paymentMethod === 'bank_transfer' ? 'Chuyển khoản' : 
+                           order.paymentMethod === 'transfer' ? 'Chuyển khoản' : 
+                           order.paymentMethod.toUpperCase()}
+                        </span>
+                        {order.orderSource === 'pos' ? (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 text-[9px] font-bold">
+                            💻 Mini POS
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400 text-[9px] font-bold">
+                            🌐 Website
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* 6. Đơn vị vận chuyển */}
+                    <td className="p-4 text-gray-700 dark:text-gray-300 text-xs font-semibold">
+                      {deliveryType === 'pickup' ? (
+                        <span className="px-2 py-1 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-450 text-[10px] font-bold">
+                          TakeAway
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 rounded bg-teal-50 text-teal-700 dark:bg-teal-950/30 dark:text-teal-400 text-[10px] font-bold">
+                          Giao hàng
+                        </span>
+                      )}
+                    </td>
+
+                    {/* 7. Cửa hàng */}
+                    <td className="p-4 text-gray-750 dark:text-gray-300 text-xs font-bold">
+                      {deliveryType === 'pickup' ? (
+                        resolveBranchName(pickupBranch) || 'Cửa hàng chính'
+                      ) : (
+                        <span className="text-gray-400 dark:text-gray-600">-</span>
+                      )}
+                    </td>
+
+                    {/* 8. Trạng thái đơn hàng */}
+                    <td className="p-4">
+                      {order.orderStatus === 'delivered' || order.orderStatus === 'cancelled' ? (
+                        <span className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border-0 ${getStatusColor(order.orderStatus)} inline-block`}>
+                          {getStatusText(order.orderStatus, order)}
+                        </span>
+                      ) : (
+                        <select 
+                          value={order.orderStatus}
+                          onChange={(e) => statusMutation.mutate({ id: order._id, status: e.target.value })}
+                          disabled={statusMutation.isPending}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-bold outline-none border-0 ${getStatusColor(order.orderStatus)} cursor-pointer`}
+                        >
+                          <option value="pending">
+                            {(order.paymentMethod === 'bank_transfer' || order.paymentMethod === 'transfer') && order.paymentStatus === 'pending' ? 'Chờ thanh toán' : 'Chờ xác nhận'}
+                          </option>
+                          <option value="confirmed">Đã xác nhận</option>
+                          <option value="shipping">Đang giao</option>
+                          <option value="delivered">Đã hoàn thành</option>
+                          <option value="cancelled">Đã huỷ</option>
+                        </select>
+                      )}
+                    </td>
+
+                    {/* 9. Trạng thái thanh toán */}
+                    <td className="p-4">
+                      <div className="flex flex-col gap-1 items-start">
+                        <select 
+                          value={order.paymentStatus}
+                          onChange={(e) => statusMutation.mutate({ id: order._id, paymentStatus: e.target.value })}
+                          disabled={statusMutation.isPending}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold outline-none border ${
+                            order.paymentStatus === 'paid'
+                              ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-900/30'
+                              : order.paymentStatus === 'refunded'
+                              ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-900/30'
+                              : 'bg-yellow-50 text-yellow-700 border-yellow-250 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-900/30'
+                          } cursor-pointer`}
+                        >
+                          <option value="pending">Chưa thanh toán</option>
+                          <option value="paid">Đã thanh toán</option>
+                          <option value="refunded">Đã hoàn tiền</option>
+                        </select>
+                        {order.paymentProof && order.paymentStatus === 'pending' && (
+                          <button
+                            onClick={() => {
+                              setProofModalUrl(order.paymentProof);
+                              setIsProofModalOpen(true);
+                            }}
+                            className="text-[10px] font-black text-amber-600 dark:text-amber-400 underline hover:text-amber-700 cursor-pointer border-0 bg-transparent flex items-center gap-1 mt-0.5 animate-pulse"
+                          >
+                            📄 Xem minh chứng
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* 10. Hành động */}
+                    <td className="p-4">
+                      <button 
+                        onClick={() => { setSelectedOrder(order); setIsDetailModalOpen(true); }}
+                        className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer border-0 bg-transparent"
+                      >
+                        <Eye size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
@@ -167,15 +369,43 @@ const Orders = () => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Trạng thái:</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${getStatusColor(selectedOrder.orderStatus)}`}>
-                    {getStatusText(selectedOrder.orderStatus)}
-                  </span>
+                  <select
+                    value={selectedOrder.orderStatus}
+                    onChange={e => {
+                      statusMutation.mutate({ id: selectedOrder._id, status: e.target.value });
+                      setSelectedOrder((prev: any) => ({ ...prev, orderStatus: e.target.value }));
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border-0 outline-none cursor-pointer appearance-none pr-6 ${getStatusColor(selectedOrder.orderStatus)}`}
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
+                  >
+                    <option value="pending">Chờ xác nhận</option>
+                    <option value="confirmed">Đã xác nhận</option>
+                    <option value="shipping">Đang giao hàng</option>
+                    <option value="delivered">Đã hoàn thành</option>
+                    <option value="cancelled">Đã huỷ</option>
+                  </select>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500">Thanh toán:</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${selectedOrder.paymentStatus === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400'}`}>
-                    {selectedOrder.paymentStatus === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                  </span>
+                  <select
+                    value={selectedOrder.paymentStatus}
+                    onChange={e => {
+                      statusMutation.mutate({ id: selectedOrder._id, paymentStatus: e.target.value });
+                      setSelectedOrder((prev: any) => ({ ...prev, paymentStatus: e.target.value }));
+                    }}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border-0 outline-none cursor-pointer appearance-none pr-6 ${
+                      selectedOrder.paymentStatus === 'paid'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400'
+                        : selectedOrder.paymentStatus === 'refunded'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400'
+                        : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400'
+                    }`}
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
+                  >
+                    <option value="pending">Chưa thanh toán</option>
+                    <option value="paid">Đã thanh toán</option>
+                    <option value="refunded">Đã hoàn tiền</option>
+                  </select>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Hình thức:</span>
@@ -253,18 +483,111 @@ const Orders = () => {
                           </div>
                         </td>
                         <td className="p-3 font-semibold text-gray-800 dark:text-gray-200 align-middle">
-                          {item.product?.name || 'Sản phẩm đã bị xóa'}
+                          <div>{item.product?.name || 'Sản phẩm đã bị xóa'}</div>
+                          {item.isGift && (
+                            <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded inline-flex items-center gap-1 mt-0.5">
+                              🎁 Sản phẩm này được tặng kèm
+                            </span>
+                          )}
                         </td>
                         <td className="p-3 text-gray-500 dark:text-gray-400 font-mono font-medium align-middle">{item.product?.sku || 'N/A'}</td>
-                        <td className="p-3 text-gray-700 dark:text-gray-300 align-middle">{item.price.toLocaleString()}đ</td>
+                        <td className={`p-3 align-middle font-medium ${item.isGift ? 'text-emerald-600 dark:text-emerald-400 font-bold line-through decoration-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                          {item.isGift ? '0đ' : `${item.price.toLocaleString()}đ`}
+                        </td>
                         <td className="p-3 text-center font-medium text-gray-800 dark:text-gray-200 align-middle">{item.qty}</td>
-                        <td className="p-3 text-right font-bold text-gray-900 dark:text-white align-middle">{(item.price * item.qty).toLocaleString()}đ</td>
+                        <td className={`p-3 text-right font-bold align-middle ${item.isGift ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-900 dark:text-white'}`}>
+                          {item.isGift ? '0đ' : `${(item.price * item.qty).toLocaleString()}đ`}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+
+            {/* Return Request Verification */}
+            {selectedOrder.returnRequest && selectedOrder.returnRequest.reason && (
+              <div className="mt-6 p-4 rounded-xl border border-dashed text-sm bg-gray-50/50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700">
+                <h4 className="font-extrabold text-gray-800 dark:text-white mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                  🔄 Yêu cầu hoàn trả hàng & Hoàn tiền
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-1.5 text-left">
+                    <p><span className="font-bold text-gray-500">Lý do từ khách hàng:</span> <span className="font-medium text-gray-800 dark:text-gray-200">{selectedOrder.returnRequest.reason}</span></p>
+                    <p><span className="font-bold text-gray-500">Thời gian yêu cầu:</span> <span className="font-medium text-gray-700 dark:text-gray-300">{new Date(selectedOrder.returnRequest.createdAt).toLocaleString('vi-VN')}</span></p>
+                    
+                    {selectedOrder.returnRequest.images?.length > 0 && (
+                      <div className="mt-2">
+                        <p className="font-bold text-gray-500 mb-1">Ảnh minh chứng:</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {selectedOrder.returnRequest.images.map((img: string, i: number) => (
+                            <a key={i} href={img.startsWith('http') ? img : `${API_BASE}${img}`} target="_blank" rel="noreferrer" className="w-16 h-16 rounded-lg overflow-hidden border dark:border-gray-700 hover:opacity-80 transition-opacity flex items-center justify-center bg-gray-105">
+                              <img src={img.startsWith('http') ? img : `${API_BASE}${img}`} alt="" className="w-full h-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2 text-left">
+                    <p><span className="font-bold text-gray-500">Trạng thái duyệt:</span> 
+                      <span className={`ml-2 px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                        selectedOrder.returnRequest.status === 'approved'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                          : selectedOrder.returnRequest.status === 'rejected'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                          : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400'
+                      }`}>
+                        {selectedOrder.returnRequest.status === 'approved' ? 'Đã duyệt' : 
+                         selectedOrder.returnRequest.status === 'rejected' ? 'Đã từ chối' : 'Chờ duyệt'}
+                      </span>
+                    </p>
+                    
+                    {selectedOrder.returnRequest.status === 'pending' ? (
+                      <div className="space-y-2 mt-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ý kiến phản hồi / Lý do từ chối *</label>
+                          <textarea
+                            rows={2}
+                            value={adminComment}
+                            onChange={(e) => setAdminComment(e.target.value)}
+                            placeholder="Nhập ghi chú phản hồi cho khách hàng..."
+                            className="w-full border dark:border-gray-700 rounded-lg px-3 py-1.5 text-xs bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:border-primary resize-none"
+                          />
+                        </div>
+                        
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleApproveReturn(selectedOrder._id)}
+                            disabled={isApprovingReturn || isRejectingReturn}
+                            className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer border-0"
+                          >
+                            {isApprovingReturn ? 'Đang duyệt...' : 'Đồng ý hoàn'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectReturn(selectedOrder._id)}
+                            disabled={isApprovingReturn || isRejectingReturn}
+                            className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer border-0"
+                          >
+                            {isRejectingReturn ? 'Đang từ chối...' : 'Từ chối'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      selectedOrder.returnRequest.adminComment && (
+                        <div className="mt-2 p-2.5 rounded-lg bg-white dark:bg-gray-800 border dark:border-gray-750">
+                          <p className="font-bold text-gray-500 text-[10px] uppercase">Ghi chú từ Admin:</p>
+                          <p className="italic text-gray-800 dark:text-gray-300 text-xs mt-0.5">{selectedOrder.returnRequest.adminComment}</p>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Total Footer */}
             {(() => {
@@ -319,6 +642,42 @@ const Orders = () => {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Proof Modal */}
+      {isProofModalOpen && proofModalUrl && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-750">
+              <h4 className="text-sm font-bold text-gray-800 dark:text-white">📄 Minh chứng chuyển khoản ngân hàng</h4>
+              <button 
+                type="button"
+                onClick={() => { setIsProofModalOpen(false); setProofModalUrl(null); }}
+                className="text-gray-400 hover:text-gray-700 dark:hover:text-white font-extrabold cursor-pointer border-0 bg-transparent"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex items-center justify-center bg-gray-100 dark:bg-gray-900 flex-1">
+              <img 
+                src={proofModalUrl.startsWith('http') ? proofModalUrl : `${API_BASE}${proofModalUrl}`} 
+                alt="Minh chứng giao dịch" 
+                className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-sm cursor-zoom-in"
+                onClick={() => window.open(proofModalUrl.startsWith('http') ? proofModalUrl : `${API_BASE}${proofModalUrl}`, '_blank')}
+              />
+            </div>
+            
+            <div className="p-4 border-t dark:border-gray-700 flex justify-end bg-gray-50 dark:bg-gray-750">
+              <button 
+                onClick={() => { setIsProofModalOpen(false); setProofModalUrl(null); }}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-750 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-all border-0 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

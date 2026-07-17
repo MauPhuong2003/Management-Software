@@ -12,4 +12,8 @@ router.route('/')
     .post(authMiddleware_1.protect, (0, authMiddleware_1.authorize)('orders_create', 'pos_create'), orderController_1.createOrder);
 router.route('/:id/status')
     .patch(authMiddleware_1.protect, (0, authMiddleware_1.authorize)('orders_update'), orderController_1.updateOrderStatus);
+router.route('/:id/return/approve')
+    .post(authMiddleware_1.protect, (0, authMiddleware_1.authorize)('orders_update'), orderController_1.approveOrderReturn);
+router.route('/:id/return/reject')
+    .post(authMiddleware_1.protect, (0, authMiddleware_1.authorize)('orders_update'), orderController_1.rejectOrderReturn);
 exports.default = router;

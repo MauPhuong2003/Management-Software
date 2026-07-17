@@ -8,6 +8,8 @@ export interface IOrder extends Document {
         variantSku?: string | null;
         qty: number;
         price: number;
+        isGift?: boolean;
+        giftNote?: string;
     }[];
     totalAmount: number;
     discountAmount?: number;
@@ -20,6 +22,17 @@ export interface IOrder extends Document {
     loyaltyAwarded: boolean;
     loyaltyPointsUsed?: number;
     loyaltyDiscount?: number;
+    deliveryType?: 'shipping' | 'pickup';
+    pickupBranch?: string | null;
+    returnRequest?: {
+        reason: string;
+        images: string[];
+        status: 'pending' | 'approved' | 'rejected';
+        adminComment?: string;
+        createdAt: Date;
+    } | null;
+    paymentProof?: string | null;
+    paymentProofSubmittedAt?: Date | null;
 }
 
 const orderSchema = new Schema<IOrder>({
@@ -29,7 +42,9 @@ const orderSchema = new Schema<IOrder>({
         product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
         variantSku: { type: String, default: null },
         qty: { type: Number, required: true },
-        price: { type: Number, required: true }
+        price: { type: Number, required: true, min: 0 },
+        isGift: { type: Boolean, default: false },
+        giftNote: { type: String, default: '' }
     }],
     totalAmount: { type: Number, required: true },
     discountAmount: { type: Number, default: 0 },
@@ -41,7 +56,21 @@ const orderSchema = new Schema<IOrder>({
     note: { type: String, default: '' },
     loyaltyAwarded: { type: Boolean, default: false },
     loyaltyPointsUsed: { type: Number, default: 0 },
-    loyaltyDiscount: { type: Number, default: 0 }
+    loyaltyDiscount: { type: Number, default: 0 },
+    deliveryType: { type: String, enum: ['shipping', 'pickup'], default: 'shipping' },
+    pickupBranch: { type: String, default: null },
+    paymentProof: { type: String, default: null },
+    paymentProofSubmittedAt: { type: Date, default: null },
+    returnRequest: {
+        type: {
+            reason: { type: String },
+            images: [{ type: String }],
+            status: { type: String, enum: ['pending', 'approved', 'rejected'] },
+            adminComment: { type: String, default: '' },
+            createdAt: { type: Date }
+        },
+        default: undefined
+    }
 }, { timestamps: true });
 
 export default mongoose.model<IOrder>('Order', orderSchema);

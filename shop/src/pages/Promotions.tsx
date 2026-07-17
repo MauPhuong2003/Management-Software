@@ -32,6 +32,7 @@ export const Promotions = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [selectedPromo, setSelectedPromo] = useState<Promotion | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'shipping' | 'order' | 'product' | 'buy_x_get_y'>('all');
 
   useEffect(() => {
     shopService.getActivePromotions()
@@ -52,6 +53,24 @@ export const Promotions = () => {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
+  const filteredPromotions = promotions.filter(p => {
+    if (activeTab === 'all') return true;
+    return p.applyType === activeTab;
+  });
+
+  const getApplyTypeBadge = (applyType: string) => {
+    switch (applyType) {
+      case 'shipping':
+        return { text: 'FREE SHIP', label: 'Miễn phí vận chuyển', bg: 'from-teal-500 to-emerald-600', color: 'text-teal-600 bg-teal-50 border-teal-200' };
+      case 'product':
+        return { text: 'SẢN PHẨM', label: 'Ưu đãi sản phẩm', bg: 'from-indigo-500 to-purple-600', color: 'text-indigo-600 bg-indigo-50 border-indigo-200' };
+      case 'buy_x_get_y':
+        return { text: 'QUÀ TẶNG', label: 'Mua X Tặng Y', bg: 'from-pink-500 to-rose-600', color: 'text-pink-600 bg-pink-50 border-pink-200' };
+      default:
+        return { text: 'ĐƠN HÀNG', label: 'Ưu đãi đơn hàng', bg: 'from-orange-500 to-red-600', color: 'text-orange-600 bg-orange-50 border-orange-200' };
+    }
+  };
+
   return (
     <div className="space-y-8 pb-16">
       {/* Page Header */}
@@ -67,9 +86,39 @@ export const Promotions = () => {
             Kho Ưu Đãi & Mã Giảm Giá
           </h1>
           <p className="text-xs sm:text-sm text-indigo-100 font-medium max-w-lg">
-            Khám phá các chương trình ưu đãi hiện hành, lưu mã giảm giá và áp dụng ngay trong giỏ hàng để nhận chiết khấu trực tiếp lên đơn hàng của bạn.
+            Khám phá các chương trình ưu đãi phân loại Phí Vận Chuyển, Đơn Hàng và Sản Phẩm. Áp dụng ngay để nhận chiết khấu trực tiếp!
           </p>
         </div>
+      </div>
+
+      {/* Shopee-style Category Filter Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        {[
+          { id: 'all', label: '🌟 Tất cả mã', count: promotions.length },
+          { id: 'shipping', label: '🚚 Phí vận chuyển', count: promotions.filter(p => p.applyType === 'shipping').length },
+          { id: 'order', label: '🏷️ Đơn hàng', count: promotions.filter(p => p.applyType === 'order' || !p.applyType).length },
+          { id: 'product', label: '📦 Sản phẩm', count: promotions.filter(p => p.applyType === 'product').length },
+          { id: 'buy_x_get_y', label: '🎁 Mua X Tặng Y', count: promotions.filter(p => p.applyType === 'buy_x_get_y').length }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black shrink-0 border transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === tab.id
+                ? 'bg-orange-500 text-white border-orange-500 shadow-md scale-105'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-orange-300'
+            }`}
+          >
+            <span>{tab.label}</span>
+            {tab.count > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+              }`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Main Grid */}
@@ -78,45 +127,49 @@ export const Promotions = () => {
           <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
           <p className="text-xs font-bold text-gray-400">Đang tải danh sách ưu đãi...</p>
         </div>
-      ) : promotions.length === 0 ? (
+      ) : filteredPromotions.length === 0 ? (
         <div className="text-center py-20 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-3xl p-8 space-y-4">
           <Ticket size={48} className="mx-auto text-gray-300 dark:text-gray-600 animate-bounce" />
           <div className="space-y-1">
-            <h3 className="text-sm font-black text-gray-700 dark:text-gray-300">Không tìm thấy mã ưu đãi nào</h3>
-            <p className="text-xs text-gray-450 dark:text-gray-450">Hiện tại hệ thống chưa phát hành mã voucher nào mới. Quay lại sau nhé!</p>
+            <h3 className="text-sm font-black text-gray-700 dark:text-gray-300">Không tìm thấy mã ưu đãi nào trong danh mục này</h3>
+            <p className="text-xs text-gray-450 dark:text-gray-450">Thử chuyển sang danh mục khác để xem thêm mã giảm giá nhé!</p>
           </div>
           <button 
-            onClick={() => navigate('/catalog')}
+            onClick={() => setActiveTab('all')}
             className="px-6 py-2.5 bg-primary hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow transition-all cursor-pointer inline-flex items-center gap-1.5"
           >
-            Khám phá sản phẩm <ArrowRight size={14} />
+            Xem tất cả mã <ArrowRight size={14} />
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {promotions.map((promo) => {
+          {filteredPromotions.map((promo) => {
             const isCopied = copiedCode === promo.code;
+            const badgeInfo = getApplyTypeBadge(promo.applyType);
+
             return (
               <div
                 key={promo._id}
                 onClick={() => setSelectedPromo(promo)}
-                className="relative bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-750 hover:border-indigo-200 dark:hover:border-indigo-900 rounded-3xl p-6 flex gap-6 items-center justify-between shadow-sm hover:shadow-md transition-all cursor-pointer group overflow-hidden"
+                className="relative bg-white dark:bg-gray-800 border border-gray-150 dark:border-gray-750 hover:border-orange-400 dark:hover:border-orange-500 rounded-3xl p-5 flex gap-5 items-center justify-between shadow-sm hover:shadow-md transition-all cursor-pointer group overflow-hidden"
               >
                 {/* Real Ticket side cut-outs */}
-                <div className="absolute top-1/2 -translate-y-1/2 -left-3.5 w-7 h-7 bg-gray-50 dark:bg-gray-900 rounded-full border-r border-gray-100 dark:border-gray-750" />
-                <div className="absolute top-1/2 -translate-y-1/2 -right-3.5 w-7 h-7 bg-gray-50 dark:bg-gray-900 rounded-full border-l border-gray-100 dark:border-gray-750" />
+                <div className="absolute top-1/2 -translate-y-1/2 -left-3.5 w-7 h-7 bg-gray-50 dark:bg-gray-900 rounded-full border-r border-gray-200 dark:border-gray-750" />
+                <div className="absolute top-1/2 -translate-y-1/2 -right-3.5 w-7 h-7 bg-gray-50 dark:bg-gray-900 rounded-full border-l border-gray-200 dark:border-gray-750" />
                 
-                {/* Left side: Voucher image or value badge */}
-                <div className="w-20 h-20 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-gray-750 dark:to-gray-750 rounded-2xl flex flex-col items-center justify-center text-primary dark:text-indigo-400 shrink-0 shadow-sm border border-indigo-50 dark:border-gray-700 overflow-hidden">
+                {/* Left side: Shopee-style Ticket Badge */}
+                <div className={`w-24 h-24 bg-gradient-to-br ${badgeInfo.bg} text-white rounded-2xl flex flex-col items-center justify-center shrink-0 shadow-sm border border-white/20 overflow-hidden relative`}>
                   {promo.image ? (
                     <img src={promo.image.startsWith('http') ? promo.image : `${API_BASE}${promo.image}`} alt={promo.name} className="w-full h-full object-cover" />
                   ) : (
                     <>
-                      <Ticket size={24} className="mb-1 text-purple-500" />
-                      <span className="text-xs font-black">
+                      <Ticket size={26} className="mb-1 text-white/90" />
+                      <span className="text-xs font-black leading-none">
                         {promo.type === 'percent' ? `${promo.value}%` : `${Math.floor(promo.value / 1000)}k`}
                       </span>
-                      <span className="text-[7px] font-black uppercase text-gray-400 tracking-wider">Voucher</span>
+                      <span className="text-[8px] font-extrabold uppercase text-white/80 tracking-wider mt-1">
+                        {badgeInfo.text}
+                      </span>
                     </>
                   )}
                 </div>
@@ -124,19 +177,24 @@ export const Promotions = () => {
                 {/* Center: Voucher details summary */}
                 <div className="flex-1 text-left min-w-0 space-y-1.5 pl-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-primary dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/50 px-2 py-0.5 rounded border border-orange-200 dark:border-orange-900/40 font-mono">
                       {promo.code}
                     </span>
+                    {(promo as any).isPersonalVoucher && (
+                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-900/40">
+                        🎯 Quà MiniGame
+                      </span>
+                    )}
                     <span className="text-[9px] text-gray-400 font-bold">
-                      Đơn tối thiểu {promo.minOrderValue?.toLocaleString()}đ
+                      Tối thiểu {promo.minOrderValue?.toLocaleString()}đ
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-black text-gray-800 dark:text-white line-clamp-1 group-hover:text-primary dark:group-hover:text-indigo-400 transition-colors">
+                  <h3 className="text-sm font-black text-gray-800 dark:text-white line-clamp-1 group-hover:text-orange-500 transition-colors">
                     {promo.name}
                   </h3>
                   <p className="text-[10px] text-gray-450 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                    {promo.description || 'Không có mô tả chi tiết cho mã giảm giá này.'}
+                    {promo.description || 'Áp dụng ưu đãi khi thỏa điều kiện đơn hàng.'}
                   </p>
 
                   <div className="flex items-center gap-1 text-[9px] text-gray-400 font-medium">
